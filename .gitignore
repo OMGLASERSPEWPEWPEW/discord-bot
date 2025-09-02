@@ -1,0 +1,31 @@
+# /discord-bot/.gitignore
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# OS/Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
