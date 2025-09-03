@@ -1,4 +1,18 @@
-
+// Repository monitoring configuration
+const REPO_CONFIG = [
+  {
+    owner: 'OMGLASERSPEWPEWPEW',
+    repo: 'berghain-bot', 
+    channelId: '1412917309328195644', // #berghain-comp
+    displayName: 'Berghain Bot'
+  },
+  {
+    owner: 'OMGLASERSPEWPEWPEW',
+    repo: 'GlyffitiMobile',
+    channelId: '1332457876643516416', // #glyffiti  
+    displayName: 'Glyffiti Mobile'
+  }
+];
 
 /*
  * File: discord-bot/bot.js
@@ -12,7 +26,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
 const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
-const { getLastSeenCommit, updateLastSeenCommit } = require('./src/utils/commit-tracker');
+
 
 // Create a new Discord client instance with required intents.
 const client = new Client({
@@ -99,6 +113,37 @@ app.post('/berghain-results', (req, res) => {
 });
 
 /**
+ * Gets the last commit hash from Discord channel history
+ */
+async function getLastCommitFromChannel(channelId) {
+  console.log('bot.js:getLastCommitFromChannel - checking channel %s for last commit', channelId);
+  
+  try {
+    const channel = client.channels.cache.get(channelId);
+    if (!channel) return null;
+    
+    const messages = await channel.messages.fetch({ limit: 10 });
+    
+    for (const message of messages.values()) {
+      if (message.author.id === client.user.id && message.embeds.length > 0) {
+        const embed = message.embeds[0];
+        if (embed.footer && embed.footer.text) {
+          const commitHash = embed.footer.text.split(' • ')[0]; // Extract hash from "abc1234 • timestamp"
+          console.log('bot.js:getLastCommitFromChannel - found last commit: %s', commitHash);
+          return commitHash;
+        }
+      }
+    }
+    
+    console.log('bot.js:getLastCommitFromChannel - no previous commits found in channel');
+    return null;
+  } catch (error) {
+    console.error('bot.js:getLastCommitFromChannel - error reading channel history:', error.message);
+    return null;
+  }
+}
+
+/**
  * Formats Berghain game results into Discord message
  */
 function formatBerghainResults(payload) {
@@ -151,50 +196,55 @@ app.listen(PORT, () => {
  * Starts monitoring GitHub repo for new commits
  */
 async function startGitHubMonitoring() {
-  console.log('bot.js:startGitHubMonitoring - starting commit monitoring');
+  console.log('bot.js:startGitHubMonitoring - starting commit monitoring for %d repos', REPO_CONFIG.length);
   
   const checkInterval = 3 * 60 * 1000; // Check every 3 minutes
   
-  async function pollForCommits() {
-    try {
-      const lastSeen = await getLastSeenCommit();
-      const newCommits = await checkForNewCommits(lastSeen);
-      
-      if (newCommits.length > 0) {
-        console.log('bot.js:pollForCommits - found %d new commits', newCommits.length);
+  // Create monitoring for each repo
+  for (const repoConfig of REPO_CONFIG) {
+    console.log('bot.js:startGitHubMonitoring - setting up monitoring for %s/%s', repoConfig.owner, repoConfig.repo);
+    
+    async function pollForCommits() {
+      try {
+        const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
+        const { getLastSeenCommit, updateLastSeenCommit } = require('./src/utils/commit-tracker');
         
-        const channel = client.channels.cache.get('1412917309328195644');
-        if (channel) {
-          for (const commit of newCommits) {
-            // Get detailed file changes
-            const details = await fetchCommitDetails(commit.sha);
-            const enhancedCommit = { ...commit, ...details };
-            
-            // Create rich embed
-            const fakePayload = {
-              commits: [enhancedCommit],
-              repository: { name: 'berghain-bot' },
-              ref: 'refs/heads/main'
-            };
-            
-            const embed = createCommitEmbed(fakePayload);
-            if (embed) {
-              await channel.send({ embeds: [embed] });
-            }
-          }
+        const lastSeen = await getLastCommitFromChannel(repoConfig.channelId);
+        const newCommits = await checkForNewCommits(repoConfig.owner, repoConfig.repo, lastSeen);
+        
+        if (newCommits.length > 0) {
+          console.log('bot.js:pollForCommits - found %d new commits for %s', newCommits.length, repoConfig.displayName);
           
-          // Update tracker with latest commit
-          await updateLastSeenCommit(newCommits[newCommits.length - 1].sha);
+          const channel = client.channels.cache.get(repoConfig.channelId);
+          if (channel) {
+            for (const commit of newCommits) {
+              const details = await fetchCommitDetails(repoConfig.owner, repoConfig.repo, commit.sha);
+              const enhancedCommit = { ...commit, ...details };
+              
+              const fakePayload = {
+                commits: [enhancedCommit],
+                repository: { name: repoConfig.displayName },
+                ref: 'refs/heads/main'
+              };
+              
+              const embed = createCommitEmbed(fakePayload);
+              if (embed) {
+                await channel.send({ embeds: [embed] });
+              }
+            }
+            
+            await updateLastSeenCommit(repoConfig.repo, newCommits[newCommits.length - 1].sha);
+          }
         }
+      } catch (error) {
+        console.error('bot.js:pollForCommits - error polling %s:', repoConfig.displayName, error.message);
       }
-    } catch (error) {
-      console.error('bot.js:pollForCommits - error polling commits:', error.message);
     }
+    
+    // Initial check (staggered to avoid rate limits)
+    setTimeout(pollForCommits, 5000 + (REPO_CONFIG.indexOf(repoConfig) * 2000));
+    
+    // Set up regular polling  
+    setInterval(pollForCommits, checkInterval);
   }
-  
-  // Initial check
-  setTimeout(pollForCommits, 5000); // Wait 5 seconds after bot ready
-  
-  // Set up regular polling
-  setInterval(pollForCommits, checkInterval);
 }

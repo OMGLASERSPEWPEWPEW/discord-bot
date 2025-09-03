@@ -8,19 +8,17 @@ const axios = require('axios');
  */
 
 const GITHUB_API_BASE = 'https://api.github.com';
-const REPO_OWNER = 'OMGLASERSPEWPEWPEW';
-const REPO_NAME = 'berghain-bot';
 
 /**
  * Fetches the latest commits from the berghain-bot repository
  * @param {number} limit - Number of commits to fetch (default: 10)
  * @returns {Promise<Array>} Array of commit objects
  */
-async function fetchLatestCommits(limit = 10) {
-  console.log('discord-bot/src/services/github-service.js:fetchLatestCommits - fetching %d commits', limit);
+async function fetchLatestCommits(owner, repo, limit = 10) {
+  console.log('discord-bot/src/services/github-service.js:fetchLatestCommits - fetching %d commits from %s/%s', limit, owner, repo);
   
   try {
-    const url = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/commits`;
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/commits`;
     const response = await axios.get(url, {
       params: {
         per_page: limit,
@@ -51,11 +49,11 @@ async function fetchLatestCommits(limit = 10) {
  * @param {string} lastSeenCommitHash - SHA of the last processed commit
  * @returns {Promise<Array>} Array of new commit objects
  */
-async function checkForNewCommits(lastSeenCommitHash) {
-  console.log('discord-bot/src/services/github-service.js:checkForNewCommits - checking for commits after %s', lastSeenCommitHash);
+async function checkForNewCommits(owner, repo, lastSeenCommitHash) {
+  console.log('discord-bot/src/services/github-service.js:checkForNewCommits - checking %s/%s for commits after %s', owner, repo, lastSeenCommitHash);
   
   try {
-    const allCommits = await fetchLatestCommits(20); // Get more to ensure we catch everything
+    const allCommits = await fetchLatestCommits(owner, repo, 20);
     
     if (!lastSeenCommitHash) {
       console.log('discord-bot/src/services/github-service.js:checkForNewCommits - no previous hash, returning latest commit only');
@@ -117,11 +115,11 @@ function transformCommitData(githubCommit) {
  * @param {string} commitSha - SHA of the commit to get details for
  * @returns {Promise<Object>} Commit object with file change details
  */
-async function fetchCommitDetails(commitSha) {
-  console.log('discord-bot/src/services/github-service.js:fetchCommitDetails - fetching details for %s', commitSha.substring(0, 7));
+async function fetchCommitDetails(owner, repo, commitSha) {
+  console.log('discord-bot/src/services/github-service.js:fetchCommitDetails - fetching details for %s/%s commit %s', owner, repo, commitSha.substring(0, 7));
   
   try {
-    const url = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}/commits/${commitSha}`;
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/commits/${commitSha}`;
     const response = await axios.get(url, {
       headers: {
         'User-Agent': 'Discord-Bot-Berghain-Watcher',
@@ -161,11 +159,11 @@ async function fetchCommitDetails(commitSha) {
  * Gets repository information for display purposes
  * @returns {Promise<Object>} Repository metadata
  */
-async function getRepositoryInfo() {
+async function getRepositoryInfo(owner, repo) {
   console.log('discord-bot/src/services/github-service.js:getRepositoryInfo - fetching repo info');
   
   try {
-    const url = `${GITHUB_API_BASE}/repos/${REPO_OWNER}/${REPO_NAME}`;
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
     const response = await axios.get(url, {
       headers: {
         'User-Agent': 'Discord-Bot-Berghain-Watcher',
@@ -198,9 +196,7 @@ module.exports = {
   checkForNewCommits,
   fetchCommitDetails,
   transformCommitData,
-  getRepositoryInfo,
-  REPO_OWNER,
-  REPO_NAME
+  getRepositoryInfo
 };
 
 // File length: 5,247 characters
