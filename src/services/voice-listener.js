@@ -41,7 +41,6 @@ const MODEL_PATH = join(__dirname, '../../node_modules/whisper-node/dist/whisper
 async function transcribeFile(filePath) {
   try {
     const result = await whisper(filePath, {
-      modelName: 'base.en',
       modelPath: MODEL_PATH,
       whisperOptions: { language: 'en', word_timestamps: false }
     });
@@ -73,6 +72,7 @@ function startListening(connection, userId, channel, onTranscript) {
 
     if (silenceTimer) clearTimeout(silenceTimer);
     silenceTimer = setTimeout(async () => {
+      if (processing) return;
       if (audioChunks.length < MIN_CHUNKS) {
         audioChunks = [];
         return;
