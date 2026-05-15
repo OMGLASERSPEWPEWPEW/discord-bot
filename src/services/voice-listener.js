@@ -36,10 +36,13 @@ function writeWav(pcmBuffer, filePath) {
   writeFileSync(filePath, Buffer.concat([header, pcmBuffer]));
 }
 
+const MODEL_PATH = join(__dirname, '../../node_modules/whisper-node/dist/whisper/models/ggml-base.en.bin');
+
 async function transcribeFile(filePath) {
   try {
     const result = await whisper(filePath, {
       modelName: 'base.en',
+      modelPath: MODEL_PATH,
       whisperOptions: { language: 'en', word_timestamps: false }
     });
     if (!result || result.length === 0) return null;
@@ -76,6 +79,7 @@ function startListening(connection, userId, channel, onTranscript) {
       }
 
       processing = true;
+      listening = false;
       const buffer = Buffer.concat(audioChunks);
       audioChunks = [];
 
@@ -83,8 +87,9 @@ function startListening(connection, userId, channel, onTranscript) {
       try {
         writeWav(buffer, wavPath);
         const sizeKB = (buffer.length / 1024).toFixed(0);
-        console.log(`[stt] Transcribing ${sizeKB}KB audio...`);
-        const statusMsg = await channel.send(`-# 🎤 Transcribing ${sizeKB}KB audio...`).catch(() => null);
+        const durationSec = (buffer.length / (48000 * 2)).toFixed(1);
+        console.log(`[stt] Transcribing ${sizeKB}KB (~${durationSec}s) audio...`);
+        const statusMsg = await channel.send(`-# 🎤 Processing ${durationSec}s of audio...`).catch(() => null);
         const transcript = await transcribeFile(wavPath);
         if (transcript) {
           console.log(`[stt] Transcript: "${transcript}"`);
@@ -98,6 +103,7 @@ function startListening(connection, userId, channel, onTranscript) {
       } finally {
         try { unlinkSync(wavPath); } catch {}
         processing = false;
+        listening = true;
       }
     }, SILENCE_TIMEOUT);
   });
