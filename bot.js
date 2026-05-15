@@ -431,7 +431,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             if (activeListener) activeListener.resume();
             else {
               activeListener = startListening(connection, DARKLIGHT_ID, channel, async (transcript) => {
-                const GLYFFI_PATTERN = /gl[iy]ff?[iey]e?/i;
+                const GLYFFI_PATTERN = /gl[iy](?:ff?|ph)[iey]e?/i;
                 if (!GLYFFI_PATTERN.test(transcript)) {
                   console.log(`[stt] No keyword, ignoring: "${transcript.slice(0, 80)}"`);
                   return;
