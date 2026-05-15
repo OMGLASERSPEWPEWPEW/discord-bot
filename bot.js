@@ -237,7 +237,9 @@ You have tools to browse local codebases in ~/Development. When someone asks abo
 
 const VOICE_SYSTEM_PROMPT = `You are Glyffi, speaking in a voice channel. Keep responses to 1-3 sentences — concise and conversational, as if talking to a friend. No markdown, no formatting, no emojis.
 
-You have tools to browse local codebases in ~/Development. When someone asks about code or projects, use the tools to look things up rather than guessing. Start with list_projects to see what's available, then explore with list_files and read_file. Use search_code to find specific patterns.`;
+You have tools to browse local codebases in ~/Development. When someone asks about code or projects, use the tools to look things up rather than guessing. Start with list_projects to see what's available, then explore with list_files and read_file. Use search_code to find specific patterns.
+
+Note: speech-to-text may mishear project names. Common mappings: "bird game" or "berghain" = berghain-bot, "glyffiti" = GlyffitiMobile, "nib" = nib, "open claw" = openclaw. When in doubt, use list_projects to find the closest match.`;
 
 const TOOL_WINDOW = 12;
 const MAX_COST_PER_QUERY = 0.50;
@@ -454,6 +456,34 @@ client.on('messageCreate', async message => {
   }
 });
 
+function playTTS(player, text) {
+  const cleanText = text.replace(/[^\w\s.,!?'-]/g, '');
+  const urls = googleTTS.getAllAudioUrls(cleanText, { lang: 'en', slow: false });
+  let index = 0;
+
+  function playNext() {
+    if (index >= urls.length) return;
+    const resource = createAudioResource(urls[index].url);
+    player.play(resource);
+    index++;
+  }
+
+  player.removeAllListeners(AudioPlayerStatus.Idle);
+  player.on(AudioPlayerStatus.Idle, playNext);
+  playNext();
+
+  return new Promise(resolve => {
+    const origListener = () => {
+      if (index >= urls.length) {
+        player.removeListener(AudioPlayerStatus.Idle, origListener);
+        resolve();
+      }
+    };
+    player.on(AudioPlayerStatus.Idle, origListener);
+    if (urls.length === 0) resolve();
+  });
+}
+
 const DARKLIGHT_ID = '85856344308973568';
 let activeListener = null;
 
@@ -496,15 +526,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
       if (connection) {
         try {
-          const cleanText = text.replace(/[^\w\s.,!?'-]/g, '').slice(0, 200);
-          const ttsUrl = googleTTS.getAudioUrl(cleanText, { lang: 'en', slow: false });
           const player = createAudioPlayer();
-          const resource = createAudioResource(ttsUrl);
           connection.subscribe(player);
-          player.play(resource);
           console.log(`[voice] Playing TTS greeting in ${channel.name}`);
-          player.on(AudioPlayerStatus.Idle, () => {
-            console.log(`[voice] TTS playback finished`);
+          await playTTS(player, text);
+          console.log(`[voice] TTS playback finished`);
+          {
             if (activeListener) activeListener.resume();
             else {
               activeListener = startListening(connection, DARKLIGHT_ID, channel, async (transcript) => {
@@ -528,18 +555,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                   await channel.send(reply + `\n-# ${formatCost(vcost.cost)} | ${vtokens.toLocaleString()} tokens | ${voiceResp.rounds} tool rounds`);
                   logActivity('voice-reply', { user: 'DarkLight', channel: channel.name, query: query.slice(0, 80), rounds: voiceResp.rounds });
 
-                  const cleanReply = reply.replace(/[^\w\s.,!?'-]/g, '').slice(0, 200);
-                  const replyUrl = googleTTS.getAudioUrl(cleanReply, { lang: 'en', slow: false });
-                  const replyResource = createAudioResource(replyUrl);
-                  player.play(replyResource);
                   console.log(`[voice] Playing response TTS`);
+                  activeListener.pause();
+                  await playTTS(player, reply);
+                  console.log(`[voice] Response TTS finished`);
+                  activeListener.resume();
                 } catch (err) {
                   console.error('[voice] Voice response failed:', err.message);
                   activeListener.resume();
                 }
               });
             }
-          });
+          }
           player.on('error', err => {
             console.error('[voice] TTS playback error:', err.message);
           });
