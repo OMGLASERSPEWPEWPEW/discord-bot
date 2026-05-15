@@ -22,6 +22,7 @@ const bodyParser = require('body-parser');
 const Anthropic = require('@anthropic-ai/sdk');
 const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
 const { ingestAllChannels, logMessage, getStats } = require('./src/services/db-service');
 const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
@@ -387,6 +388,18 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (joined || switched) {
     const channel = newState.channel;
     try {
+      joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+        selfDeaf: true,
+        selfMute: true,
+      });
+      console.log(`[voice] Joined ${channel.name}`);
+    } catch (err) {
+      console.error('[voice] Failed to join voice channel:', err.message);
+    }
+    try {
       const greeting = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 150,
@@ -406,6 +419,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (left) {
     const channel = oldState.channel;
+    try {
+      const connection = getVoiceConnection(oldState.guild.id);
+      if (connection) connection.destroy();
+      console.log(`[voice] Left ${channel.name}`);
+    } catch (err) {
+      console.error('[voice] Failed to leave voice channel:', err.message);
+    }
     try {
       const farewell = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
