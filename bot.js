@@ -3,7 +3,7 @@ const REPO_CONFIG = [
   {
     owner: 'OMGLASERSPEWPEWPEW',
     repo: 'discord-bot',
-    channelId: '1491916053553352745', // Glyffi's chat channel
+    channelId: '1504906264742985779', // #glyffi
     displayName: 'Glyffi Bot',
     eli5: true
   }
@@ -185,6 +185,10 @@ const TOOL_WINDOW = 12;
 const MAX_COST_PER_QUERY = 0.50;
 
 client.on('messageCreate', async message => {
+  const tag = message.author.bot ? ' [BOT]' : '';
+  const preview = message.content.slice(0, 120) || (message.embeds.length ? `[${message.embeds.length} embed(s)]` : '[no content]');
+  console.log(`[msg] #${message.channel.name} | ${message.author.displayName}${tag}: ${preview}`);
+
   if (message.author.bot) return;
   if (!message.mentions.has(client.user)) return;
 
