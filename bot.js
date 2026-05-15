@@ -22,7 +22,7 @@ const bodyParser = require('body-parser');
 const Anthropic = require('@anthropic-ai/sdk');
 const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
-const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { startListening } = require('./src/services/voice-listener');
 const googleTTS = require('google-tts-api');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
@@ -520,6 +520,27 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       });
       voiceStatus = { connected: true, channel: channel.name, state: 'greeting' };
       console.log(`[voice] Joined ${channel.name}`);
+
+      connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        console.log('[voice] Disconnected — attempting reconnect...');
+        try {
+          await Promise.race([
+            entersState(connection, VoiceConnectionStatus.Signalling, 5000),
+            entersState(connection, VoiceConnectionStatus.Connecting, 5000),
+          ]);
+          console.log('[voice] Reconnecting...');
+        } catch {
+          console.log('[voice] Reconnect failed — destroying connection');
+          connection.destroy();
+          if (activeListener) { activeListener.stop(); activeListener = null; }
+          voiceStatus = { connected: false, channel: null, state: 'idle' };
+        }
+      });
+
+      connection.on(VoiceConnectionStatus.Destroyed, () => {
+        console.log('[voice] Connection destroyed');
+        voiceStatus = { connected: false, channel: null, state: 'idle' };
+      });
     } catch (err) {
       console.error('[voice] Failed to join voice channel:', err.message);
     }
@@ -595,7 +616,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       }
     } catch (err) {
       console.error('[voice] greeting failed:', err.message);
-      await channel.send('Hey DarkLight! 👋').catch(() => {});
+      await channel.send('Hey DarkLight! 👋').catch(e => console.error('[voice] fallback greeting failed:', e.message));
     }
   }
 
@@ -624,7 +645,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       logActivity('voice-leave', { user: 'DarkLight', channel: channel.name });
       console.log(`[voice] Said bye to DarkLight in #${channel.name}`);
     } catch (err) {
-      await channel.send('Later, DarkLight ✌️').catch(() => {});
+      await channel.send('Later, DarkLight ✌️').catch(e => console.error('[voice] fallback farewell failed:', e.message));
     }
   }
 });
