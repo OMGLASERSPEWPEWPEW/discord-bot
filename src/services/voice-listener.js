@@ -50,7 +50,7 @@ async function transcribeFile(filePath) {
   }
 }
 
-function startListening(connection, userId, onTranscript) {
+function startListening(connection, userId, channel, onTranscript) {
   const receiver = connection.receiver;
   let listening = true;
   let audioChunks = [];
@@ -82,11 +82,16 @@ function startListening(connection, userId, onTranscript) {
       const wavPath = join(TMP_DIR, `voice_${Date.now()}.wav`);
       try {
         writeWav(buffer, wavPath);
-        console.log(`[stt] Transcribing ${(buffer.length / 1024).toFixed(0)}KB audio...`);
+        const sizeKB = (buffer.length / 1024).toFixed(0);
+        console.log(`[stt] Transcribing ${sizeKB}KB audio...`);
+        const statusMsg = await channel.send(`-# 🎤 Transcribing ${sizeKB}KB audio...`).catch(() => null);
         const transcript = await transcribeFile(wavPath);
         if (transcript) {
           console.log(`[stt] Transcript: "${transcript}"`);
+          if (statusMsg) await statusMsg.edit(`-# 🎤 Heard: "${transcript}"`).catch(() => {});
           await onTranscript(transcript);
+        } else {
+          if (statusMsg) await statusMsg.edit(`-# 🎤 Couldn't make that out`).catch(() => {});
         }
       } catch (err) {
         console.error('[stt] Processing error:', err.message);

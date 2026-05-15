@@ -430,7 +430,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             console.log(`[voice] TTS playback finished`);
             if (activeListener) activeListener.resume();
             else {
-              activeListener = startListening(connection, DARKLIGHT_ID, async (transcript) => {
+              activeListener = startListening(connection, DARKLIGHT_ID, channel, async (transcript) => {
                 if (!transcript.toLowerCase().includes('glyffi')) {
                   console.log(`[stt] No keyword, ignoring: "${transcript.slice(0, 80)}"`);
                   return;
@@ -439,6 +439,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 if (!query) return;
                 console.log(`[voice] Processing query: "${query}"`);
                 activeListener.pause();
+                const thinkingMsg = await channel.send(`-# 💭 Thinking about: "${query.slice(0, 80)}"`).catch(() => null);
 
                 try {
                   const voiceResp = await anthropic.messages.create({
@@ -447,6 +448,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                     system: 'You are Glyffi, speaking in a voice channel. Keep responses to 1-3 sentences — concise and conversational, as if talking to a friend. No markdown, no formatting, no emojis.',
                     messages: [{ role: 'user', content: query }]
                   });
+                  if (thinkingMsg) await thinkingMsg.delete().catch(() => {});
                   const reply = voiceResp.content[0].text;
                   const vcost = recordUsage(voiceResp.usage.input_tokens, voiceResp.usage.output_tokens, 'Glyffi-Voice', channel.id);
                   const vtokens = voiceResp.usage.input_tokens + voiceResp.usage.output_tokens;
