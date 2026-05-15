@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glyffi — Command Center</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --void: #0a0a0f;
+    --surface: #12121a;
+    --surface-raised: #1a1a26;
+    --surface-hover: #222230;
+    --border: #2a2a3a;
+    --border-glow: #3a3a5a;
+    --text: #e2e2ef;
+    --text-dim: #8888a8;
+    --text-muted: #55556a;
+    --accent: #6c63ff;
+    --accent-glow: #8b83ff;
+    --green: #3ddc84;
+    --green-dim: #2a9d5e;
+    --red: #ff4f6d;
+    --amber: #ffb84d;
+    --cyan: #4dd4e6;
+    --pink: #e84dff;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-display: 'Outfit', sans-serif;
+  }
+
+  html { font-size: 14px; }
+
+  body {
+    background: var(--void);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* CRT scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Ambient glow */
+  .ambient {
+    position: fixed;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.07;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .ambient--purple { background: var(--accent); top: -200px; left: -100px; }
+  .ambient--green { background: var(--green); bottom: -200px; right: -100px; }
+
+  .shell {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 2rem 4rem;
+  }
+
+  /* === HEADER === */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header__mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent) 0%, #4d3dff 100%);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1.4rem;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(108, 99, 255, 0.3);
+    flex-shrink: 0;
+  }
+
+  .header__title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.8rem;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--text) 0%, var(--text-dim) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .header__version {
+    font-size: 0.7rem;
+    font-weight: 500;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .header__status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+  }
+
+  .header__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .header__dot--online {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green), 0 0 20px rgba(61, 220, 132, 0.3);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  .header__dot--offline {
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* === NEURAL PULSE === */
+  .pulse-bar {
+    height: 40px;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .pulse-bar canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* === STATS GRID === */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem;
+    transition: border-color 0.2s, transform 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat:hover {
+    border-color: var(--border-glow);
+    transform: translateY(-1px);
+  }
+  .stat::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .stat:hover::before { opacity: 1; }
+  .stat:nth-child(1)::before { background: var(--green); }
+  .stat:nth-child(2)::before { background: var(--cyan); }
+  .stat:nth-child(3)::before { background: var(--accent); }
+  .stat:nth-child(4)::before { background: var(--amber); }
+  .stat:nth-child(5)::before { background: var(--pink); }
+
+  .stat__label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+
+  .stat__value {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .stat__value--green { color: var(--green); }
+  .stat__value--cyan { color: var(--cyan); }
+  .stat__value--accent { color: var(--accent-glow); }
+  .stat__value--amber { color: var(--amber); }
+  .stat__value--pink { color: var(--pink); }
+
+  .stat__unit {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-left: 0.2rem;
+  }
+
+  /* === PANELS === */
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel__title {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .panel__icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    display: grid;
+    place-items: center;
+    font-size: 0.6rem;
+  }
+  .panel__icon--users { background: rgba(108, 99, 255, 0.15); color: var(--accent-glow); }
+  .panel__icon--activity { background: rgba(61, 220, 132, 0.15); color: var(--green); }
+  .panel__icon--repos { background: rgba(255, 184, 77, 0.15); color: var(--amber); }
+
+  .panel__badge {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .panel__body {
+    padding: 0;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .panel__body::-webkit-scrollbar { width: 4px; }
+  .panel__body::-webkit-scrollbar-track { background: transparent; }
+  .panel__body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* === USER TABLE === */
+  .utable {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .utable th {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    font-weight: 500;
+    padding: 0.7rem 1.2rem;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+  }
+  .utable th:not(:first-child) { text-align: right; }
+
+  .utable td {
+    padding: 0.65rem 1.2rem;
+    border-top: 1px solid rgba(42, 42, 58, 0.5);
+    font-size: 0.8rem;
+  }
+  .utable td:not(:first-child) { text-align: right; color: var(--text-dim); }
+
+  .utable tr:hover td { background: var(--surface-hover); }
+
+  .utable__name {
+    font-weight: 500;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .utable__avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--pink) 100%);
+    display: grid;
+    place-items: center;
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .utable__cost { font-variant-numeric: tabular-nums; }
+
+  /* === ACTIVITY FEED === */
+  .feed-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.7rem 1.2rem;
+    border-top: 1px solid rgba(42, 42, 58, 0.5);
+    transition: background 0.15s;
+  }
+  .feed-item:first-child { border-top: none; }
+  .feed-item:hover { background: var(--surface-hover); }
+
+  .feed-item__icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+  .feed-item__icon--chat { background: rgba(108, 99, 255, 0.12); color: var(--accent-glow); }
+  .feed-item__icon--commit { background: rgba(61, 220, 132, 0.12); color: var(--green); }
+  .feed-item__icon--berghain { background: rgba(255, 79, 109, 0.12); color: var(--red); }
+  .feed-item__icon--eli5 { background: rgba(255, 184, 77, 0.12); color: var(--amber); }
+
+  .feed-item__body { flex: 1; min-width: 0; }
+
+  .feed-item__text {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .feed-item__text strong { color: var(--text); font-weight: 500; }
+
+  .feed-item__time {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    margin-top: 0.2rem;
+    letter-spacing: 0.03em;
+  }
+
+  /* === REPOS === */
+  .repos {
+    margin-top: 1.5rem;
+  }
+
+  .repo-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 1rem 1.2rem;
+  }
+
+  .repo-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 8px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .repo-chip:hover {
+    border-color: var(--border-glow);
+    color: var(--text);
+  }
+  .repo-chip__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green-dim);
+  }
+
+  /* === EMPTY STATE === */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    gap: 0.5rem;
+  }
+  .empty__icon { font-size: 1.5rem; opacity: 0.4; }
+
+  /* === LOADING SHIMMER === */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .loading {
+    background: linear-gradient(90deg, var(--surface) 25%, var(--surface-raised) 50%, var(--surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  /* === RESPONSIVE === */
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(3, 1fr); }
+    .panels { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .shell { padding: 1rem; }
+  }
+
+  /* Entry animation */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .header { animation: fade-up 0.4s ease-out; }
+  .pulse-bar { animation: fade-up 0.4s ease-out 0.05s both; }
+  .stats { animation: fade-up 0.4s ease-out 0.1s both; }
+  .panels { animation: fade-up 0.4s ease-out 0.15s both; }
+  .repos { animation: fade-up 0.4s ease-out 0.2s both; }
+</style>
+</head>
+<body>
+
+<div class="ambient ambient--purple"></div>
+<div class="ambient ambient--green"></div>
+
+<div class="shell">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header__mark">G</div>
+    <h1 class="header__title">Glyffi</h1>
+    <span class="header__version" id="version">—</span>
+    <div class="header__status">
+      <div class="header__dot" id="status-dot"></div>
+      <span id="status-label">connecting</span>
+    </div>
+  </header>
+
+  <!-- NEURAL PULSE -->
+  <div class="pulse-bar">
+    <canvas id="pulse-canvas"></canvas>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat__label">Uptime</div>
+      <div class="stat__value stat__value--green" id="stat-uptime">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Ping</div>
+      <div class="stat__value stat__value--cyan" id="stat-ping">—<span class="stat__unit">ms</span></div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Guilds</div>
+      <div class="stat__value stat__value--accent" id="stat-guilds">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Queries</div>
+      <div class="stat__value stat__value--amber" id="stat-queries">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat__label">Total Cost</div>
+      <div class="stat__value stat__value--pink" id="stat-cost">—</div>
+    </div>
+  </div>
+
+  <!-- PANELS -->
+  <div class="panels">
+
+    <!-- USER USAGE -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title">
+          <div class="panel__icon panel__icon--users">&#9679;</div>
+          Usage by User
+        </div>
+        <span class="panel__badge" id="user-count">0 users</span>
+      </div>
+      <div class="panel__body" id="user-table-wrap">
+        <div class="empty"><div class="empty__icon">&#8943;</div>Waiting for data</div>
+      </div>
+    </div>
+
+    <!-- ACTIVITY -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title">
+          <div class="panel__icon panel__icon--activity">&#9679;</div>
+          Activity
+        </div>
+        <span class="panel__badge" id="activity-count">0 events</span>
+      </div>
+      <div class="panel__body" id="activity-feed">
+        <div class="empty"><div class="empty__icon">&#8943;</div>No activity yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPOS -->
+  <div class="panel repos">
+    <div class="panel__head">
+      <div class="panel__title">
+        <div class="panel__icon panel__icon--repos">&#9679;</div>
+        Monitored Repositories
+      </div>
+    </div>
+    <div class="repo-list" id="repo-list">
+      <div class="empty"><div class="empty__icon">&#8943;</div>Loading</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  let uptimeBase = 0;
+  let uptimeFetched = Date.now();
+  let pulsePoints = [];
+
+  // === FORMATTERS ===
+
+  function fmtUptime(s) {
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+    if (h > 0) return h + 'h ' + m + 'm ' + sec + 's';
+    return m + 'm ' + sec + 's';
+  }
+
+  function fmtCost(c) {
+    if (c < 0.01) return '$' + c.toFixed(4);
+    return '$' + c.toFixed(2);
+  }
+
+  function fmtTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return '' + n;
+  }
+
+  function fmtAgo(ts) {
+    const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  // === DOM REFS ===
+  const $ = (id) => document.getElementById(id);
+
+  // === PULSE CANVAS ===
+  const canvas = $('pulse-canvas');
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * devicePixelRatio;
+    canvas.height = rect.height * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  function addPulse(type) {
+    const colors = {
+      chat: '#6c63ff',
+      commit: '#3ddc84',
+      berghain: '#ff4f6d',
+      eli5: '#ffb84d'
+    };
+    pulsePoints.push({
+      x: canvas.width / devicePixelRatio,
+      color: colors[type] || '#6c63ff',
+      intensity: 1,
+      age: 0
+    });
+  }
+
+  let lastActivityLen = 0;
+  let waveOffset = 0;
+
+  function drawPulse() {
+    const w = canvas.width / devicePixelRatio;
+    const h = canvas.height / devicePixelRatio;
+    ctx.clearRect(0, 0, w, h);
+
+    waveOffset += 0.3;
+
+    // Ambient wave
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(108, 99, 255, 0.08)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x++) {
+      const y = h / 2 + Math.sin((x + waveOffset) * 0.02) * 6 + Math.sin((x + waveOffset * 0.7) * 0.05) * 3;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Second ambient wave
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(61, 220, 132, 0.05)';
+    for (let x = 0; x < w; x++) {
+      const y = h / 2 + Math.sin((x - waveOffset * 0.8) * 0.03) * 5 + Math.cos((x + waveOffset * 0.5) * 0.015) * 4;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Activity pulses
+    for (let i = pulsePoints.length - 1; i >= 0; i--) {
+      const p = pulsePoints[i];
+      p.x -= 1.5;
+      p.age++;
+      p.intensity = Math.max(0, 1 - p.age / 200);
+
+      if (p.intensity <= 0) {
+        pulsePoints.splice(i, 1);
+        continue;
+      }
+
+      ctx.beginPath();
+      ctx.arc(p.x, h / 2, 3 + p.intensity * 4, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + Math.round(p.intensity * 60).toString(16).padStart(2, '0');
+      ctx.fill();
+
+      const grad = ctx.createRadialGradient(p.x, h / 2, 0, p.x, h / 2, 20);
+      grad.addColorStop(0, p.color + Math.round(p.intensity * 30).toString(16).padStart(2, '0'));
+      grad.addColorStop(1, p.color + '00');
+      ctx.beginPath();
+      ctx.arc(p.x, h / 2, 20, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    requestAnimationFrame(drawPulse);
+  }
+  drawPulse();
+
+  // === FETCH HELPERS ===
+
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status);
+    return res.json();
+  }
+
+  // === STATUS POLL ===
+
+  async function pollStatus() {
+    try {
+      const d = await fetchJSON('/api/status');
+      $('version').textContent = 'v' + d.version;
+      const dot = $('status-dot');
+      const label = $('status-label');
+      if (d.status === 'online') {
+        dot.className = 'header__dot header__dot--online';
+        label.textContent = d.botTag || 'online';
+      } else {
+        dot.className = 'header__dot header__dot--offline';
+        label.textContent = 'offline';
+      }
+
+      uptimeBase = d.uptime;
+      uptimeFetched = Date.now();
+      $('stat-ping').innerHTML = d.ping + '<span class="stat__unit">ms</span>';
+      $('stat-guilds').textContent = d.guilds;
+
+      // repos
+      const repoWrap = $('repo-list');
+      if (d.monitoredRepos && d.monitoredRepos.length > 0) {
+        repoWrap.innerHTML = d.monitoredRepos.map(function(r) {
+          return '<div class="repo-chip"><div class="repo-chip__dot"></div>' + r + '</div>';
+        }).join('');
+      }
+    } catch (e) {
+      $('status-dot').className = 'header__dot header__dot--offline';
+      $('status-label').textContent = 'unreachable';
+    }
+  }
+
+  // === USAGE POLL ===
+
+  async function pollUsage() {
+    try {
+      const d = await fetchJSON('/api/usage');
+      $('stat-queries').textContent = d.queries.toLocaleString();
+      $('stat-cost').textContent = fmtCost(d.totalCost);
+
+      const users = Object.entries(d.byUser || {});
+      const wrap = $('user-table-wrap');
+      $('user-count').textContent = users.length + ' user' + (users.length !== 1 ? 's' : '');
+
+      if (users.length === 0) {
+        wrap.innerHTML = '<div class="empty"><div class="empty__icon">&#8943;</div>No usage recorded</div>';
+        return;
+      }
+
+      users.sort(function(a, b) { return b[1].queries - a[1].queries; });
+
+      var html = '<table class="utable"><thead><tr><th>User</th><th>Queries</th><th>Tokens</th><th>Cost</th></tr></thead><tbody>';
+      users.forEach(function(u) {
+        var name = u[0];
+        var data = u[1];
+        var initials = name.slice(0, 2).toUpperCase();
+        html += '<tr><td><div class="utable__name"><div class="utable__avatar">' + initials + '</div>' + name + '</div></td>';
+        html += '<td>' + data.queries + '</td>';
+        html += '<td>' + fmtTokens(data.inputTokens + data.outputTokens) + '</td>';
+        html += '<td class="utable__cost">' + fmtCost(data.cost) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    } catch (e) { /* silent */ }
+  }
+
+  // === ACTIVITY POLL ===
+
+  const typeIcons = {
+    chat: '&#9993;',
+    commit: '&#9670;',
+    berghain: '&#9733;',
+    eli5: '&#9889;'
+  };
+
+  const typeLabels = {
+    chat: 'Chat',
+    commit: 'Commit',
+    berghain: 'Berghain',
+    eli5: 'ELI5'
+  };
+
+  function describeActivity(item) {
+    var d = item.details || {};
+    switch (item.type) {
+      case 'chat':
+        return '<strong>' + (d.user || '?') + '</strong> asked Glyffi' + (d.cost ? ' &middot; ' + fmtCost(d.cost) : '');
+      case 'commit':
+        return '<strong>' + (d.repo || '?') + '</strong> &mdash; ' + (d.count || '?') + ' new commit' + ((d.count || 0) !== 1 ? 's' : '');
+      case 'berghain':
+        return '<strong>' + (d.player || '?') + '</strong> played scenario ' + (d.scenario || '?');
+      case 'eli5':
+        return 'ELI5 posted for <strong>' + (d.repo || '?') + '</strong> commit ' + (d.commit || '?');
+      default:
+        return JSON.stringify(d).slice(0, 80);
+    }
+  }
+
+  async function pollActivity() {
+    try {
+      var items = await fetchJSON('/api/activity');
+      var feed = $('activity-feed');
+      $('activity-count').textContent = items.length + ' event' + (items.length !== 1 ? 's' : '');
+
+      // Fire pulses for new items
+      if (items.length > lastActivityLen) {
+        for (var i = lastActivityLen; i < items.length; i++) {
+          addPulse(items[i].type);
+        }
+      }
+      lastActivityLen = items.length;
+
+      if (items.length === 0) {
+        feed.innerHTML = '<div class="empty"><div class="empty__icon">&#8943;</div>No activity yet</div>';
+        return;
+      }
+
+      var reversed = items.slice().reverse();
+      var html = '';
+      reversed.forEach(function(item) {
+        var icon = typeIcons[item.type] || '&#8226;';
+        var iconClass = 'feed-item__icon feed-item__icon--' + (item.type || 'chat');
+        html += '<div class="feed-item">';
+        html += '<div class="' + iconClass + '">' + icon + '</div>';
+        html += '<div class="feed-item__body">';
+        html += '<div class="feed-item__text">' + describeActivity(item) + '</div>';
+        html += '<div class="feed-item__time">' + fmtAgo(item.timestamp) + '</div>';
+        html += '</div></div>';
+      });
+      feed.innerHTML = html;
+    } catch (e) { /* silent */ }
+  }
+
+  // === UPTIME TICK ===
+
+  function tickUptime() {
+    var elapsed = (Date.now() - uptimeFetched) / 1000;
+    var current = uptimeBase + elapsed;
+    if (uptimeBase > 0) {
+      $('stat-uptime').textContent = fmtUptime(current);
+    }
+  }
+
+  // === INIT ===
+
+  pollStatus();
+  pollUsage();
+  pollActivity();
+
+  setInterval(pollStatus, 5000);
+  setInterval(pollUsage, 30000);
+  setInterval(pollActivity, 10000);
+  setInterval(tickUptime, 1000);
+
+})();
+</script>
+</body>
+</html>

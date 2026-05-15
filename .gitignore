@@ -24,6 +24,9 @@ coverage/
 .env.local
 .env.*.local
 
+# Logs
+logs/
+
 # OS/Editor junk
 .DS_Store
 Thumbs.db

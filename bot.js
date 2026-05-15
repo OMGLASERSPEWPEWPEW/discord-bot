@@ -2,15 +2,22 @@
 const REPO_CONFIG = [
   {
     owner: 'OMGLASERSPEWPEWPEW',
-    repo: 'berghain-bot', 
+    repo: 'berghain-bot',
     channelId: '1412917309328195644', // #berghain-comp
     displayName: 'Berghain Bot'
   },
   {
     owner: 'OMGLASERSPEWPEWPEW',
     repo: 'GlyffitiMobile',
-    channelId: '1332457876643516416', // #glyffiti  
+    channelId: '1332457876643516416', // #glyffiti
     displayName: 'Glyffiti Mobile'
+  },
+  {
+    owner: 'OMGLASERSPEWPEWPEW',
+    repo: 'discord-bot',
+    channelId: '1491916053553352745', // Glyffi's chat channel
+    displayName: 'Glyffi Bot',
+    eli5: true
   }
 ];
 
@@ -32,6 +39,8 @@ const { checkForNewCommits, fetchCommitDetails } = require('./src/services/githu
 
 const fs = require('fs');
 const pathModule = require('path');
+
+const BOT_VERSION = require('./package.json').version;
 
 const anthropic = new Anthropic();
 
@@ -60,6 +69,14 @@ function saveUsage(usage) {
 }
 
 let usage = loadUsage();
+
+const activityLog = [];
+const MAX_ACTIVITY = 200;
+
+function logActivity(type, details) {
+  activityLog.push({ timestamp: new Date().toISOString(), type, details });
+  if (activityLog.length > MAX_ACTIVITY) activityLog.shift();
+}
 
 function recordUsage(inputTokens, outputTokens, userName, channelId) {
   const cost = inputTokens * PRICE_INPUT + outputTokens * PRICE_OUTPUT;
@@ -99,12 +116,13 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
 // Log when the bot is ready.
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}!`);
+  console.log(`Glyffi v${BOT_VERSION} logged in as ${client.user.tag}!`);
   
   // List all servers and channels the bot can see
   console.log('Servers and Channels:');
@@ -128,7 +146,7 @@ async function initMcpClient() {
       stderr: 'inherit',
     });
 
-    mcpClient = new McpClient({ name: 'discord-bot', version: '1.0.0' });
+    mcpClient = new McpClient({ name: 'discord-bot', version: BOT_VERSION });
     await mcpClient.connect(transport);
 
     const { tools } = await mcpClient.listTools();
@@ -264,6 +282,7 @@ client.on('messageCreate', async message => {
 
     const totalTokens = totalInput + totalOutput;
     const footer = `\n-# ${formatCost(queryCost.cost)} | ${totalTokens.toLocaleString()} tokens | ${rounds} tool rounds`;
+    logActivity('chat', { user: userName, channel: channelId, cost: queryCost.cost, tokens: totalTokens });
     console.log(`[chat] done | ${rounds} rounds | ${totalTokens} tokens | ${formatCost(queryCost.cost)} | reply: ${reply.length} chars`);
 
     const fullReply = reply + footer;
@@ -326,6 +345,7 @@ app.post('/berghain-results', (req, res) => {
   if (channel) {
     const embed = formatBerghainResults(payload);
     channel.send({ embeds: [embed] });
+    logActivity('berghain', { player: payload.playerName, scenario: payload.scenario });
     console.log('bot.js:berghain-results - posted results to #berghain-comp');
   } else {
     console.error('bot.js:berghain-results - #berghain-comp channel not found');
@@ -409,9 +429,30 @@ function formatBerghainResults(payload) {
   return embed;
 }
 
-// Start the Express server.
+app.use(express.static(pathModule.join(__dirname, 'public')));
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    version: BOT_VERSION,
+    status: client.ws.status === 0 ? 'online' : 'offline',
+    uptime: process.uptime(),
+    botTag: client.user?.tag || 'unknown',
+    guilds: client.guilds.cache.size,
+    ping: client.ws.ping,
+    monitoredRepos: REPO_CONFIG.map(r => `${r.owner}/${r.repo}`)
+  });
+});
+
+app.get('/api/usage', (req, res) => {
+  res.json(loadUsage());
+});
+
+app.get('/api/activity', (req, res) => {
+  res.json(activityLog.slice(-50));
+});
+
 app.listen(PORT, () => {
-  console.log(`Express server running on port ${PORT}`);
+  console.log(`Glyffi dashboard at http://localhost:${PORT}`);
 });
 
 /**
@@ -434,6 +475,7 @@ async function startGitHubMonitoring() {
         const newCommits = await checkForNewCommits(repoConfig.owner, repoConfig.repo, lastSeen);
         
         if (newCommits.length > 0) {
+          logActivity('commit', { repo: repoConfig.displayName, count: newCommits.length });
           console.log('bot.js:pollForCommits - found %d new commits for %s', newCommits.length, repoConfig.displayName);
           
           const channel = client.channels.cache.get(repoConfig.channelId);
@@ -452,9 +494,40 @@ async function startGitHubMonitoring() {
               if (embed) {
                 await channel.send({ embeds: [embed] });
               }
+
+              if (repoConfig.eli5) {
+                try {
+                  const { generateEli5 } = require('./src/services/eli5-service');
+                  const { createEli5Embed } = require('./src/formatters/eli5-formatter');
+
+                  const allFiles = [
+                    ...(enhancedCommit.added || []),
+                    ...(enhancedCommit.modified || []),
+                    ...(enhancedCommit.removed || [])
+                  ];
+
+                  const eli5Result = await generateEli5(
+                    enhancedCommit.message,
+                    allFiles,
+                    repoConfig.displayName
+                  );
+
+                  const eli5Embed = createEli5Embed(
+                    eli5Result.text,
+                    enhancedCommit,
+                    repoConfig.displayName,
+                    BOT_VERSION
+                  );
+
+                  await channel.send({ embeds: [eli5Embed] });
+                  recordUsage(eli5Result.inputTokens, eli5Result.outputTokens, 'Glyffi-ELI5', repoConfig.channelId);
+                  logActivity('eli5', { repo: repoConfig.displayName, commit: enhancedCommit.sha.substring(0, 7) });
+                  console.log('[eli5] Posted ELI5 for %s commit %s', repoConfig.displayName, enhancedCommit.sha.substring(0, 7));
+                } catch (err) {
+                  console.error('[eli5] Failed to generate ELI5:', err.message);
+                }
+              }
             }
-            
-            
           }
         }
       } catch (error) {
