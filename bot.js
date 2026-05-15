@@ -431,11 +431,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
             if (activeListener) activeListener.resume();
             else {
               activeListener = startListening(connection, DARKLIGHT_ID, channel, async (transcript) => {
-                if (!transcript.toLowerCase().includes('glyffi')) {
+                const GLYFFI_PATTERN = /gl[iy]ff?[iey]e?/i;
+                if (!GLYFFI_PATTERN.test(transcript)) {
                   console.log(`[stt] No keyword, ignoring: "${transcript.slice(0, 80)}"`);
                   return;
                 }
-                const query = transcript.replace(/glyffi/gi, '').trim();
+                const query = transcript.replace(GLYFFI_PATTERN, '').replace(/^[\s,]+|[\s,]+$/g, '').trim();
                 if (!query) return;
                 console.log(`[voice] Processing query: "${query}"`);
                 activeListener.pause();
