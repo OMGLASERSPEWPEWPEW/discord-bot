@@ -490,6 +490,14 @@ function playTTS(player, text) {
 const DARKLIGHT_ID = '85856344308973568';
 let activeListener = null;
 let voiceHistory = [];
+const voiceTranscripts = [];
+const MAX_TRANSCRIPTS = 50;
+let voiceStatus = { connected: false, channel: null, state: 'idle' };
+
+function logTranscript(type, text, query, cost) {
+  voiceTranscripts.push({ timestamp: new Date().toISOString(), type, text, query, cost });
+  if (voiceTranscripts.length > MAX_TRANSCRIPTS) voiceTranscripts.shift();
+}
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newState.member.id !== DARKLIGHT_ID) return;
@@ -510,6 +518,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         selfDeaf: false,
         selfMute: false,
       });
+      voiceStatus = { connected: true, channel: channel.name, state: 'greeting' };
       console.log(`[voice] Joined ${channel.name}`);
     } catch (err) {
       console.error('[voice] Failed to join voice channel:', err.message);
@@ -535,6 +544,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           console.log(`[voice] Playing TTS greeting in ${channel.name}`);
           await playTTS(player, text);
           console.log(`[voice] TTS playback finished`);
+          voiceStatus.state = 'listening';
           {
             if (activeListener) activeListener.resume();
             else {
@@ -547,6 +557,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const query = transcript.replace(GLYFFI_PATTERN, '').replace(/^[\s,]+|[\s,]+$/g, '').trim();
                 if (!query) return;
                 console.log(`[voice] Processing query: "${query}"`);
+                voiceStatus.state = 'thinking';
+                logTranscript('heard', transcript, query, null);
                 activeListener.pause();
                 const thinkingMsg = await channel.send(`-# 💭 Thinking about: "${query.slice(0, 80)}"`).catch(() => null);
 
@@ -559,10 +571,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                   await channel.send(reply + `\n-# ${formatCost(vcost.cost)} | ${vtokens.toLocaleString()} tokens | ${voiceResp.rounds} tool rounds`);
                   logActivity('voice-reply', { user: 'DarkLight', channel: channel.name, query: query.slice(0, 80), rounds: voiceResp.rounds });
 
+                  voiceStatus.state = 'speaking';
+                  logTranscript('response', reply, query, vcost.cost);
                   console.log(`[voice] Playing response TTS`);
                   activeListener.pause();
                   await playTTS(player, reply);
                   console.log(`[voice] Response TTS finished`);
+                  voiceStatus.state = 'listening';
                   activeListener.resume();
                 } catch (err) {
                   console.error('[voice] Voice response failed:', err.message);
@@ -588,6 +603,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     const channel = oldState.channel;
     if (activeListener) { activeListener.stop(); activeListener = null; }
     voiceHistory = [];
+    voiceStatus = { connected: false, channel: null, state: 'idle' };
     try {
       const connection = getVoiceConnection(oldState.guild.id);
       if (connection) connection.destroy();
@@ -787,6 +803,14 @@ app.get('/api/channel/:id/messages', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/voice/status', (req, res) => {
+  res.json(voiceStatus);
+});
+
+app.get('/api/voice/transcripts', (req, res) => {
+  res.json(voiceTranscripts.slice(-30));
 });
 
 app.get('/api/db/stats', async (req, res) => {

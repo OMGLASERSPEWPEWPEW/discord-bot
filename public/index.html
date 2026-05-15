@@ -385,6 +385,68 @@
   .feed-item__icon--commit { background: rgba(61, 220, 132, 0.12); color: var(--green); }
   .feed-item__icon--berghain { background: rgba(255, 79, 109, 0.12); color: var(--red); }
   .feed-item__icon--eli5 { background: rgba(255, 184, 77, 0.12); color: var(--amber); }
+  .feed-item__icon--voice-join { background: rgba(77, 212, 230, 0.12); color: var(--cyan); }
+  .feed-item__icon--voice-leave { background: rgba(77, 212, 230, 0.12); color: var(--cyan); }
+  .feed-item__icon--voice-reply { background: rgba(232, 77, 255, 0.12); color: var(--pink); }
+  .feed-item__icon--ingest { background: rgba(61, 220, 132, 0.12); color: var(--green); }
+
+  /* === VOICE STATUS === */
+  .voice-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .voice-card__indicator {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .voice-card__indicator--idle { background: var(--surface-raised); color: var(--text-muted); }
+  .voice-card__indicator--listening { background: rgba(61, 220, 132, 0.15); color: var(--green); animation: pulse-dot 2s ease-in-out infinite; }
+  .voice-card__indicator--speaking { background: rgba(232, 77, 255, 0.15); color: var(--pink); animation: pulse-dot 1s ease-in-out infinite; }
+  .voice-card__indicator--thinking { background: rgba(255, 184, 77, 0.15); color: var(--amber); animation: pulse-dot 1.5s ease-in-out infinite; }
+  .voice-card__indicator--greeting { background: rgba(108, 99, 255, 0.15); color: var(--accent-glow); }
+  .voice-card__info { flex: 1; }
+  .voice-card__channel { font-family: var(--font-display); font-weight: 600; font-size: 0.85rem; }
+  .voice-card__state { font-size: 0.7rem; color: var(--text-dim); text-transform: capitalize; }
+
+  /* === TRANSCRIPT ITEM === */
+  .transcript {
+    padding: 0.6rem 1.2rem;
+    border-top: 1px solid rgba(42, 42, 58, 0.5);
+    font-size: 0.78rem;
+  }
+  .transcript:first-child { border-top: none; }
+  .transcript__label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.2rem;
+  }
+  .transcript__label--heard { color: var(--cyan); }
+  .transcript__label--response { color: var(--pink); }
+  .transcript__text { color: var(--text-dim); line-height: 1.4; }
+  .transcript__meta { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+  /* === DB STATS === */
+  .db-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1.2rem;
+    border-top: 1px solid rgba(42, 42, 58, 0.5);
+    font-size: 0.78rem;
+  }
+  .db-row:first-child { border-top: none; }
+  .db-row:hover { background: var(--surface-hover); }
+  .db-row__name { color: var(--text-dim); }
+  .db-row__count { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
 
   .feed-item__body { flex: 1; min-width: 0; }
 
@@ -562,6 +624,51 @@
       </div>
       <div class="panel__body" id="activity-feed">
         <div class="empty"><div class="empty__icon">&#8943;</div>No activity yet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VOICE + DB ROW -->
+  <div class="panels">
+
+    <!-- VOICE -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title">
+          <div class="panel__icon" style="background:rgba(77,212,230,0.15);color:var(--cyan)">&#9679;</div>
+          Voice
+        </div>
+        <span class="panel__badge" id="voice-state-badge">idle</span>
+      </div>
+      <div id="voice-card-wrap">
+        <div class="voice-card">
+          <div class="voice-card__indicator voice-card__indicator--idle" id="voice-indicator">&#9835;</div>
+          <div class="voice-card__info">
+            <div class="voice-card__channel" id="voice-channel">Not connected</div>
+            <div class="voice-card__state" id="voice-state-label">Idle</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel__head" style="border-top:1px solid var(--border)">
+        <div class="panel__title" style="font-size:0.75rem">Recent Transcripts</div>
+        <span class="panel__badge" id="transcript-count">0</span>
+      </div>
+      <div class="panel__body" id="transcript-feed" style="max-height:220px">
+        <div class="empty"><div class="empty__icon">&#8943;</div>No voice transcripts yet</div>
+      </div>
+    </div>
+
+    <!-- DB STATS -->
+    <div class="panel">
+      <div class="panel__head">
+        <div class="panel__title">
+          <div class="panel__icon" style="background:rgba(61,220,132,0.15);color:var(--green)">&#9679;</div>
+          Database
+        </div>
+        <span class="panel__badge" id="db-total">0 messages</span>
+      </div>
+      <div class="panel__body" id="db-stats-wrap">
+        <div class="empty"><div class="empty__icon">&#8943;</div>Loading</div>
       </div>
     </div>
   </div>
@@ -792,14 +899,11 @@
     chat: '&#9993;',
     commit: '&#9670;',
     berghain: '&#9733;',
-    eli5: '&#9889;'
-  };
-
-  const typeLabels = {
-    chat: 'Chat',
-    commit: 'Commit',
-    berghain: 'Berghain',
-    eli5: 'ELI5'
+    eli5: '&#9889;',
+    'voice-join': '&#9835;',
+    'voice-leave': '&#9835;',
+    'voice-reply': '&#9835;',
+    ingest: '&#9662;'
   };
 
   function describeActivity(item) {
@@ -813,6 +917,14 @@
         return '<strong>' + (d.player || '?') + '</strong> played scenario ' + (d.scenario || '?');
       case 'eli5':
         return 'ELI5 posted for <strong>' + (d.repo || '?') + '</strong> commit ' + (d.commit || '?');
+      case 'voice-join':
+        return '<strong>' + (d.user || '?') + '</strong> joined voice &middot; ' + (d.channel || '?');
+      case 'voice-leave':
+        return '<strong>' + (d.user || '?') + '</strong> left voice &middot; ' + (d.channel || '?');
+      case 'voice-reply':
+        return 'Voice reply to <strong>' + (d.user || '?') + '</strong>' + (d.rounds ? ' &middot; ' + d.rounds + ' tools' : '');
+      case 'ingest':
+        return 'DB sync &middot; <strong>' + (d.messages || 0) + '</strong> messages from ' + (d.channels || 0) + ' channels';
       default:
         return JSON.stringify(d).slice(0, 80);
     }
@@ -863,16 +975,83 @@
     }
   }
 
+  // === VOICE STATUS POLL ===
+
+  var voiceStateIcons = { idle: '&#9835;', listening: '&#127911;', speaking: '&#128266;', thinking: '&#128173;', greeting: '&#128075;' };
+
+  async function pollVoice() {
+    try {
+      var d = await fetchJSON('/api/voice/status');
+      $('voice-state-badge').textContent = d.state;
+      var ind = $('voice-indicator');
+      ind.className = 'voice-card__indicator voice-card__indicator--' + d.state;
+      ind.innerHTML = voiceStateIcons[d.state] || '&#9835;';
+      $('voice-channel').textContent = d.connected ? d.channel : 'Not connected';
+      $('voice-state-label').textContent = d.connected ? d.state : 'Idle';
+    } catch (e) { /* silent */ }
+  }
+
+  async function pollTranscripts() {
+    try {
+      var items = await fetchJSON('/api/voice/transcripts');
+      var feed = $('transcript-feed');
+      $('transcript-count').textContent = items.length;
+      if (items.length === 0) {
+        feed.innerHTML = '<div class="empty"><div class="empty__icon">&#8943;</div>No voice transcripts yet</div>';
+        return;
+      }
+      var html = '';
+      items.slice().reverse().forEach(function(t) {
+        var labelClass = 'transcript__label--' + t.type;
+        var label = t.type === 'heard' ? 'Heard' : 'Response';
+        html += '<div class="transcript">';
+        html += '<div class="transcript__label ' + labelClass + '">' + label + '</div>';
+        html += '<div class="transcript__text">' + (t.text || '').slice(0, 200) + '</div>';
+        html += '<div class="transcript__meta">' + fmtAgo(t.timestamp) + (t.cost ? ' &middot; ' + fmtCost(t.cost) : '') + '</div>';
+        html += '</div>';
+      });
+      feed.innerHTML = html;
+    } catch (e) { /* silent */ }
+  }
+
+  // === DB STATS POLL ===
+
+  async function pollDbStats() {
+    try {
+      var stats = await fetchJSON('/api/db/stats');
+      var wrap = $('db-stats-wrap');
+      var total = stats.reduce(function(s, r) { return s + r.row_count; }, 0);
+      $('db-total').textContent = total.toLocaleString() + ' messages';
+      if (stats.length === 0) {
+        wrap.innerHTML = '<div class="empty"><div class="empty__icon">&#8943;</div>No tables</div>';
+        return;
+      }
+      stats.sort(function(a, b) { return b.row_count - a.row_count; });
+      var html = '';
+      stats.forEach(function(r) {
+        var name = r.table_name.replace(/^ch_/, '#').replace(/_\d+$/, '').replace(/_/g, '-');
+        html += '<div class="db-row"><span class="db-row__name">' + name + '</span><span class="db-row__count">' + r.row_count.toLocaleString() + '</span></div>';
+      });
+      wrap.innerHTML = html;
+    } catch (e) { /* silent */ }
+  }
+
   // === INIT ===
 
   pollStatus();
   pollUsage();
   pollActivity();
+  pollVoice();
+  pollTranscripts();
+  pollDbStats();
 
   setInterval(pollStatus, 5000);
   setInterval(pollUsage, 30000);
   setInterval(pollActivity, 10000);
   setInterval(tickUptime, 1000);
+  setInterval(pollVoice, 2000);
+  setInterval(pollTranscripts, 5000);
+  setInterval(pollDbStats, 30000);
 
 })();
 </script>
