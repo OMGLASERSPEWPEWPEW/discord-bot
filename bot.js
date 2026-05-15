@@ -54,6 +54,31 @@ const PRICE_INPUT = 0.80 / 1_000_000;
 const PRICE_OUTPUT = 4.00 / 1_000_000;
 
 const USAGE_FILE = pathModule.join(__dirname, 'data/usage.json');
+const LAST_SEEN_FILE = pathModule.join(__dirname, 'data/last-seen.json');
+
+function loadLastSeen() {
+  try {
+    return JSON.parse(fs.readFileSync(LAST_SEEN_FILE, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function saveLastSeen(data) {
+  fs.mkdirSync(pathModule.dirname(LAST_SEEN_FILE), { recursive: true });
+  fs.writeFileSync(LAST_SEEN_FILE, JSON.stringify(data, null, 2));
+}
+
+function getLastSeenForRepo(repoConfig) {
+  const key = `${repoConfig.owner}/${repoConfig.repo}`;
+  return loadLastSeen()[key] || null;
+}
+
+function saveLastSeenForRepo(repoConfig, sha) {
+  const data = loadLastSeen();
+  data[`${repoConfig.owner}/${repoConfig.repo}`] = sha;
+  saveLastSeen(data);
+}
 
 function loadUsage() {
   try {
@@ -471,7 +496,11 @@ async function startGitHubMonitoring() {
       try {
         const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
         
-        const lastSeen = await getLastCommitFromChannel(repoConfig.channelId);
+        let lastSeen = getLastSeenForRepo(repoConfig);
+        if (!lastSeen) {
+          lastSeen = await getLastCommitFromChannel(repoConfig.channelId);
+          if (lastSeen) saveLastSeenForRepo(repoConfig, lastSeen);
+        }
         const newCommits = await checkForNewCommits(repoConfig.owner, repoConfig.repo, lastSeen);
         
         if (newCommits.length > 0) {
@@ -528,6 +557,8 @@ async function startGitHubMonitoring() {
                 }
               }
             }
+            const latestPosted = newCommits[newCommits.length - 1];
+            if (latestPosted) saveLastSeenForRepo(repoConfig, latestPosted.sha);
           }
         }
       } catch (error) {
