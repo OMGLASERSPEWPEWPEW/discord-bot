@@ -22,7 +22,8 @@ const bodyParser = require('body-parser');
 const Anthropic = require('@anthropic-ai/sdk');
 const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
-const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const googleTTS = require('google-tts-api');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
 const { ingestAllChannels, logMessage, getStats } = require('./src/services/db-service');
 const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
@@ -387,13 +388,14 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (joined || switched) {
     const channel = newState.channel;
+    let connection;
     try {
-      joinVoiceChannel({
+      connection = joinVoiceChannel({
         channelId: channel.id,
         guildId: channel.guild.id,
         adapterCreator: channel.guild.voiceAdapterCreator,
-        selfDeaf: true,
-        selfMute: true,
+        selfDeaf: false,
+        selfMute: false,
       });
       console.log(`[voice] Joined ${channel.name}`);
     } catch (err) {
@@ -403,7 +405,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const greeting = await anthropic.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 150,
-        system: 'You are Glyffi, a friendly Discord bot. Generate a short, unique greeting (1-2 sentences) for DarkLight who just joined a voice channel. Be warm, playful, and vary your style. Use an emoji or two.',
+        system: 'You are Glyffi, a friendly Discord bot. Generate a short, unique greeting (1-2 sentences) for DarkLight who just joined a voice channel. Be warm, playful, and vary your style. Use an emoji or two. Do NOT use emoji in the text — it will be spoken aloud.',
         messages: [{ role: 'user', content: `DarkLight just joined the "${channel.name}" voice channel.` }]
       });
       const text = greeting.content[0].text;
@@ -411,6 +413,26 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       recordUsage(greeting.usage.input_tokens, greeting.usage.output_tokens, 'Glyffi-Voice', channel.id);
       logActivity('voice-join', { user: 'DarkLight', channel: channel.name });
       console.log(`[voice] Greeted DarkLight in #${channel.name}`);
+
+      if (connection) {
+        try {
+          const cleanText = text.replace(/[^\w\s.,!?'-]/g, '').slice(0, 200);
+          const ttsUrl = googleTTS.getAudioUrl(cleanText, { lang: 'en', slow: false });
+          const player = createAudioPlayer();
+          const resource = createAudioResource(ttsUrl);
+          connection.subscribe(player);
+          player.play(resource);
+          console.log(`[voice] Playing TTS greeting in ${channel.name}`);
+          player.on(AudioPlayerStatus.Idle, () => {
+            console.log(`[voice] TTS playback finished`);
+          });
+          player.on('error', err => {
+            console.error('[voice] TTS playback error:', err.message);
+          });
+        } catch (ttsErr) {
+          console.error('[voice] TTS failed:', ttsErr.message);
+        }
+      }
     } catch (err) {
       console.error('[voice] greeting failed:', err.message);
       await channel.send('Hey DarkLight! 👋').catch(() => {});
