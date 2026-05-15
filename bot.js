@@ -24,8 +24,73 @@ require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 const bodyParser = require('body-parser');
+const Anthropic = require('@anthropic-ai/sdk');
+const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
+const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
 const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
+
+const fs = require('fs');
+const pathModule = require('path');
+
+const anthropic = new Anthropic();
+
+const channelHistories = new Map();
+
+let mcpClient = null;
+let mcpTools = [];
+
+// Haiku 4.5 pricing (per token)
+const PRICE_INPUT = 0.80 / 1_000_000;
+const PRICE_OUTPUT = 4.00 / 1_000_000;
+
+const USAGE_FILE = pathModule.join(__dirname, 'data/usage.json');
+
+function loadUsage() {
+  try {
+    return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf-8'));
+  } catch {
+    return { totalInputTokens: 0, totalOutputTokens: 0, totalCost: 0, queries: 0, byUser: {}, byChannel: {} };
+  }
+}
+
+function saveUsage(usage) {
+  fs.mkdirSync(pathModule.dirname(USAGE_FILE), { recursive: true });
+  fs.writeFileSync(USAGE_FILE, JSON.stringify(usage, null, 2));
+}
+
+let usage = loadUsage();
+
+function recordUsage(inputTokens, outputTokens, userName, channelId) {
+  const cost = inputTokens * PRICE_INPUT + outputTokens * PRICE_OUTPUT;
+
+  usage.totalInputTokens += inputTokens;
+  usage.totalOutputTokens += outputTokens;
+  usage.totalCost += cost;
+  usage.queries++;
+
+  if (!usage.byUser[userName]) usage.byUser[userName] = { inputTokens: 0, outputTokens: 0, cost: 0, queries: 0 };
+  usage.byUser[userName].inputTokens += inputTokens;
+  usage.byUser[userName].outputTokens += outputTokens;
+  usage.byUser[userName].cost += cost;
+  usage.byUser[userName].queries++;
+
+  if (!usage.byChannel[channelId]) usage.byChannel[channelId] = { inputTokens: 0, outputTokens: 0, cost: 0, queries: 0 };
+  usage.byChannel[channelId].inputTokens += inputTokens;
+  usage.byChannel[channelId].outputTokens += outputTokens;
+  usage.byChannel[channelId].cost += cost;
+  usage.byChannel[channelId].queries++;
+
+  saveUsage(usage);
+  return { inputTokens, outputTokens, cost };
+}
+
+function formatCost(cost) {
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+function getUsageStats() { return usage; }
 
 
 // Create a new Discord client instance with required intents.
@@ -52,13 +117,170 @@ client.once('ready', () => {
     });
   });
   startGitHubMonitoring();
+  initMcpClient();
 });
 
-// Basic "hello" command.
-client.on('messageCreate', message => {
+async function initMcpClient() {
+  try {
+    const transport = new StdioClientTransport({
+      command: 'node',
+      args: [require('path').join(__dirname, 'src/mcp/codebase-server.js')],
+      stderr: 'inherit',
+    });
+
+    mcpClient = new McpClient({ name: 'discord-bot', version: '1.0.0' });
+    await mcpClient.connect(transport);
+
+    const { tools } = await mcpClient.listTools();
+    mcpTools = tools.map(t => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema,
+    }));
+
+    console.log(`MCP codebase-reader connected (${mcpTools.length} tools)`);
+  } catch (err) {
+    console.error('MCP init failed (bot will work without codebase tools):', err.message);
+    mcpClient = null;
+    mcpTools = [];
+  }
+}
+
+const SYSTEM_PROMPT = `You are Glyffi, a helpful assistant in a Discord server. Keep responses concise and conversational. Use markdown formatting that works in Discord.
+
+You have tools to browse local codebases in ~/Development. When someone asks about code, use the tools to look things up rather than guessing. Start with list_projects to see what's available, then explore with list_files and read_file. Use search_code to find specific patterns.`;
+
+const TOOL_WINDOW = 12;
+const MAX_COST_PER_QUERY = 0.50;
+
+client.on('messageCreate', async message => {
   if (message.author.bot) return;
-  if (message.content.toLowerCase() === 'hello') {
-    message.channel.send('Hello, World!');
+  if (!message.mentions.has(client.user)) return;
+
+  const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
+  if (!userMessage) {
+    message.reply("Hey! Ask me something.");
+    return;
+  }
+
+  const channelId = message.channel.id;
+  const userName = message.author.displayName;
+  console.log(`[chat] #${message.channel.name} | ${userName}: ${userMessage.slice(0, 100)}`);
+
+  if (!channelHistories.has(channelId)) channelHistories.set(channelId, []);
+  const history = channelHistories.get(channelId);
+
+  history.push({ role: 'user', content: `${userName}: ${userMessage}` });
+  if (history.length > 40) history.splice(0, history.length - 40);
+
+  await message.channel.sendTyping();
+  const typingInterval = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
+
+  try {
+    const historyLen = history.length;
+    const loopMessages = [...history];
+    const apiParams = {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: loopMessages,
+    };
+    if (mcpTools.length > 0) apiParams.tools = mcpTools;
+
+    let response = await anthropic.messages.create(apiParams);
+    let rounds = 0;
+    let totalInput = response.usage.input_tokens;
+    let totalOutput = response.usage.output_tokens;
+    console.log(`[chat] round 0 | stop=${response.stop_reason} | tokens: ${response.usage.input_tokens}in/${response.usage.output_tokens}out`);
+
+    while (response.stop_reason === 'tool_use') {
+      rounds++;
+      const runningCost = totalInput * PRICE_INPUT + totalOutput * PRICE_OUTPUT;
+      if (runningCost >= MAX_COST_PER_QUERY) {
+        console.log(`[chat] cost cap hit (${formatCost(runningCost)}), forcing text response`);
+        break;
+      }
+
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+      console.log(`[chat] round ${rounds} | tools: ${toolUseBlocks.map(b => b.name).join(', ')}`);
+
+      const toolResults = [];
+      for (const block of toolUseBlocks) {
+        try {
+          const result = await mcpClient.callTool({ name: block.name, arguments: block.input });
+          const text = result.content.map(c => c.text || '').join('\n');
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: text });
+          console.log(`[chat]   ${block.name}(${JSON.stringify(block.input).slice(0, 80)}) -> ${text.length} chars`);
+        } catch (err) {
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
+          console.error(`[chat]   ${block.name} ERROR: ${err.message}`);
+        }
+      }
+
+      loopMessages.push({ role: 'assistant', content: response.content });
+      loopMessages.push({ role: 'user', content: toolResults });
+
+      const toolRoundCount = (loopMessages.length - historyLen) / 2;
+      if (toolRoundCount > TOOL_WINDOW) {
+        const evictStart = historyLen;
+        const evictCount = 2;
+        const evicted = loopMessages[evictStart]?.content;
+        const evictedTools = Array.isArray(evicted)
+          ? evicted.filter(b => b.type === 'tool_use').map(b => b.name).join(', ')
+          : '?';
+        loopMessages.splice(evictStart, evictCount);
+        console.log(`[chat] evicted oldest tool round (${evictedTools}), window: ${(loopMessages.length - historyLen) / 2} rounds`);
+      }
+
+      response = await anthropic.messages.create({ ...apiParams, messages: loopMessages });
+      totalInput += response.usage.input_tokens;
+      totalOutput += response.usage.output_tokens;
+      console.log(`[chat] round ${rounds} done | stop=${response.stop_reason} | tokens: ${response.usage.input_tokens}in/${response.usage.output_tokens}out`);
+    }
+
+    clearInterval(typingInterval);
+
+    if (response.stop_reason === 'tool_use') {
+      loopMessages.push({ role: 'assistant', content: response.content });
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+      const forceResults = toolUseBlocks.map(b => ({
+        type: 'tool_result', tool_use_id: b.id,
+        content: 'Wrap up now. Summarize everything you have gathered so far and respond to the user.',
+        is_error: true,
+      }));
+      loopMessages.push({ role: 'user', content: forceResults });
+      const finalParams = { ...apiParams, messages: loopMessages };
+      delete finalParams.tools;
+      response = await anthropic.messages.create(finalParams);
+      totalInput += response.usage.input_tokens;
+      totalOutput += response.usage.output_tokens;
+    }
+
+    const queryCost = recordUsage(totalInput, totalOutput, userName, channelId);
+
+    const textBlocks = response.content.filter(b => b.type === 'text');
+    let reply = textBlocks.map(b => b.text).join('\n');
+    if (!reply) reply = "I explored a lot but ran out of room to answer. Try asking about fewer projects at once.";
+
+    const totalTokens = totalInput + totalOutput;
+    const footer = `\n-# ${formatCost(queryCost.cost)} | ${totalTokens.toLocaleString()} tokens | ${rounds} tool rounds`;
+    console.log(`[chat] done | ${rounds} rounds | ${totalTokens} tokens | ${formatCost(queryCost.cost)} | reply: ${reply.length} chars`);
+
+    const fullReply = reply + footer;
+    if (fullReply.length <= 2000) {
+      await message.reply(fullReply);
+    } else {
+      const chunks = reply.match(/[\s\S]{1,2000}/g);
+      for (const chunk of chunks) {
+        await message.channel.send(chunk);
+      }
+      await message.channel.send(footer);
+    }
+  } catch (err) {
+    clearInterval(typingInterval);
+    console.error(`[chat] ERROR for ${userName}: ${err.message}`);
+    console.error(err.stack);
+    message.reply("Something went wrong talking to Claude. Try again in a sec.");
   }
 });
 
@@ -207,7 +429,6 @@ async function startGitHubMonitoring() {
     async function pollForCommits() {
       try {
         const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
-        const { getLastSeenCommit, updateLastSeenCommit } = require('./src/utils/commit-tracker');
         
         const lastSeen = await getLastCommitFromChannel(repoConfig.channelId);
         const newCommits = await checkForNewCommits(repoConfig.owner, repoConfig.repo, lastSeen);
@@ -233,7 +454,7 @@ async function startGitHubMonitoring() {
               }
             }
             
-            await updateLastSeenCommit(repoConfig.repo, newCommits[newCommits.length - 1].sha);
+            
           }
         }
       } catch (error) {

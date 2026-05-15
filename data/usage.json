@@ -1,0 +1,22 @@
+{
+  "totalInputTokens": 75802,
+  "totalOutputTokens": 3023,
+  "totalCost": 0.07273360000000001,
+  "queries": 1,
+  "byUser": {
+    "DarkLight": {
+      "inputTokens": 75802,
+      "outputTokens": 3023,
+      "cost": 0.07273360000000001,
+      "queries": 1
+    }
+  },
+  "byChannel": {
+    "1491916053553352745": {
+      "inputTokens": 75802,
+      "outputTokens": 3023,
+      "cost": 0.07273360000000001,
+      "queries": 1
+    }
+  }
+}

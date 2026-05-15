@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/conversation-logger.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/promote-hook-detector.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
