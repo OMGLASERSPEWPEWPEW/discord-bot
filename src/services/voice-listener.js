@@ -9,13 +9,28 @@ mkdirSync(TMP_DIR, { recursive: true });
 const SILENCE_TIMEOUT = 1500;
 const MIN_CHUNKS = 15;
 
+function downsample(pcmBuffer, fromRate, toRate) {
+  const ratio = fromRate / toRate;
+  const newLength = Math.floor(pcmBuffer.length / (2 * ratio)) * 2;
+  const result = Buffer.alloc(newLength);
+  for (let i = 0, j = 0; i < newLength; i += 2, j += 2 * ratio) {
+    const srcIdx = Math.floor(j / 2) * 2;
+    if (srcIdx + 1 < pcmBuffer.length) {
+      result[i] = pcmBuffer[srcIdx];
+      result[i + 1] = pcmBuffer[srcIdx + 1];
+    }
+  }
+  return result;
+}
+
 function writeWav(pcmBuffer, filePath) {
-  const sampleRate = 48000;
+  const resampled = downsample(pcmBuffer, 48000, 16000);
+  const sampleRate = 16000;
   const channels = 1;
   const bitsPerSample = 16;
   const byteRate = sampleRate * channels * (bitsPerSample / 8);
   const blockAlign = channels * (bitsPerSample / 8);
-  const dataSize = pcmBuffer.length;
+  const dataSize = resampled.length;
   const headerSize = 44;
 
   const header = Buffer.alloc(headerSize);
@@ -33,7 +48,7 @@ function writeWav(pcmBuffer, filePath) {
   header.write('data', 36);
   header.writeUInt32LE(dataSize, 40);
 
-  writeFileSync(filePath, Buffer.concat([header, pcmBuffer]));
+  writeFileSync(filePath, Buffer.concat([header, resampled]));
 }
 
 const MODEL_PATH = join(__dirname, '../../node_modules/whisper-node/dist/whisper/models/ggml-base.en.bin');
