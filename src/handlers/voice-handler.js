@@ -13,6 +13,12 @@ const TMP_DIR = join(__dirname, '../../data/tmp');
 let activeListener = null;
 let voiceHistory = [];
 
+// Pre-warm Piper model on module load
+const warmup = execFile(PIPER_BIN, ['-m', PIPER_MODEL, '--output-raw'], { timeout: 15000 }, () => {});
+warmup.stdin.write('.');
+warmup.stdin.end();
+console.log('[tts] Pre-warming Piper model...');
+
 function playTTS(player, text) {
   const cleanText = text.replace(/[^\w\s.,!?'-]/g, '').trim();
   if (!cleanText) return Promise.resolve();
@@ -20,7 +26,7 @@ function playTTS(player, text) {
   const wavPath = join(TMP_DIR, `tts_${Date.now()}.wav`);
 
   return new Promise((resolve, reject) => {
-    const proc = execFile(PIPER_BIN, ['-m', PIPER_MODEL, '--output_file', wavPath], { timeout: 15000 }, (err) => {
+    const proc = execFile(PIPER_BIN, ['-m', PIPER_MODEL, '--length-scale', '0.9', '--output_file', wavPath], { timeout: 15000 }, (err) => {
       if (err) {
         console.error('[tts] Piper error:', err.message);
         try { unlinkSync(wavPath); } catch {}

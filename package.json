@@ -1,6 +1,6 @@
 {
   "name": "discord-bot",
-  "version": "1.0.38",
+  "version": "1.0.39",
   "main": "index.js",
   "scripts": {
     "start": "node bot.js",
