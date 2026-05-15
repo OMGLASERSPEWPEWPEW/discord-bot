@@ -244,8 +244,10 @@ Note: speech-to-text may mishear project names. Common mappings: "bird game" or 
 const TOOL_WINDOW = 12;
 const MAX_COST_PER_QUERY = 0.50;
 
-async function queryWithTools(query, systemPrompt, maxTokens, logPrefix) {
-  const messages = [{ role: 'user', content: query }];
+async function queryWithTools(query, systemPrompt, maxTokens, logPrefix, history = []) {
+  history.push({ role: 'user', content: query });
+  if (history.length > 20) history.splice(0, history.length - 20);
+  const messages = [...history];
   const apiParams = {
     model: 'claude-haiku-4-5-20251001',
     max_tokens: maxTokens,
@@ -313,6 +315,7 @@ async function queryWithTools(query, systemPrompt, maxTokens, logPrefix) {
   }
 
   const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  history.push({ role: 'assistant', content: text });
   console.log(`[${logPrefix}] done | ${rounds} rounds | ${totalInput + totalOutput} tokens | reply: ${text.length} chars`);
   return { text, totalInput, totalOutput, rounds };
 }
@@ -486,6 +489,7 @@ function playTTS(player, text) {
 
 const DARKLIGHT_ID = '85856344308973568';
 let activeListener = null;
+let voiceHistory = [];
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newState.member.id !== DARKLIGHT_ID) return;
@@ -547,7 +551,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const thinkingMsg = await channel.send(`-# 💭 Thinking about: "${query.slice(0, 80)}"`).catch(() => null);
 
                 try {
-                  const voiceResp = await queryWithTools(query, VOICE_SYSTEM_PROMPT, 300, 'voice-query');
+                  const voiceResp = await queryWithTools(query, VOICE_SYSTEM_PROMPT, 300, 'voice-query', voiceHistory);
                   if (thinkingMsg) await thinkingMsg.delete().catch(() => {});
                   const reply = voiceResp.text || "I looked into it but couldn't form a clear answer.";
                   const vcost = recordUsage(voiceResp.totalInput, voiceResp.totalOutput, 'Glyffi-Voice', channel.id);
@@ -583,6 +587,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (left) {
     const channel = oldState.channel;
     if (activeListener) { activeListener.stop(); activeListener = null; }
+    voiceHistory = [];
     try {
       const connection = getVoiceConnection(oldState.guild.id);
       if (connection) connection.destroy();
