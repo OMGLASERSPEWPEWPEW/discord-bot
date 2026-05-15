@@ -137,7 +137,7 @@ const client = new Client({
 });
 
 // Log when the bot is ready.
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Glyffi v${BOT_VERSION} logged in as ${client.user.tag}!`);
   
   // List all servers and channels the bot can see
