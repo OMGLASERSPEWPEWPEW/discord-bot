@@ -12,7 +12,7 @@ const REPO_CONFIG = [
 
 const DARKLIGHT_ID = '85856344308973568';
 const GLYFFI_CHANNEL_ID = '1504906264742985779';
-const GLYFFI_PATTERN = /[gc]l[iy](?:ff?|ph)[iey]e?/i;
+const GLYFFI_PATTERN = /[gc][lr][iy](?:ff?|ph)[iey]e?/i;
 
 const PRICE_INPUT = 0.80 / 1_000_000;
 const PRICE_OUTPUT = 4.00 / 1_000_000;
