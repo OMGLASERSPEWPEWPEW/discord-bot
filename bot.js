@@ -464,6 +464,38 @@ app.get('/api/usage', (req, res) => {
   res.json(loadUsage());
 });
 
+app.get('/api/channels', (req, res) => {
+  const channels = [];
+  client.guilds.cache.forEach(guild => {
+    guild.channels.cache.forEach(ch => {
+      if (ch.type === 0 || ch.type === 2) {
+        channels.push({ id: ch.id, name: ch.name, type: ch.type === 0 ? 'text' : 'voice', guild: guild.name });
+      }
+    });
+  });
+  res.json(channels);
+});
+
+app.get('/api/channel/:id/messages', async (req, res) => {
+  try {
+    const channel = client.channels.cache.get(req.params.id);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const messages = await channel.messages.fetch({ limit });
+    const result = messages.map(m => ({
+      id: m.id,
+      author: m.author.displayName,
+      bot: m.author.bot,
+      content: m.content || null,
+      embeds: m.embeds.map(e => ({ title: e.title, description: e.description?.slice(0, 200), color: e.color })),
+      timestamp: m.createdAt.toISOString()
+    }));
+    res.json(result.reverse());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/activity', (req, res) => {
   res.json(activityLog.slice(-50));
 });
