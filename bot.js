@@ -2,18 +2,6 @@
 const REPO_CONFIG = [
   {
     owner: 'OMGLASERSPEWPEWPEW',
-    repo: 'berghain-bot',
-    channelId: '1412917309328195644', // #berghain-comp
-    displayName: 'Berghain Bot'
-  },
-  {
-    owner: 'OMGLASERSPEWPEWPEW',
-    repo: 'GlyffitiMobile',
-    channelId: '1332457876643516416', // #glyffiti
-    displayName: 'Glyffiti Mobile'
-  },
-  {
-    owner: 'OMGLASERSPEWPEWPEW',
     repo: 'discord-bot',
     channelId: '1491916053553352745', // Glyffi's chat channel
     displayName: 'Glyffi Bot',
