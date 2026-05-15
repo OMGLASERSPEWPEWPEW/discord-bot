@@ -7,7 +7,7 @@ const TMP_DIR = join(__dirname, '../../data/tmp');
 mkdirSync(TMP_DIR, { recursive: true });
 
 const SILENCE_TIMEOUT = 1500;
-const MIN_CHUNKS = 15;
+const MIN_CHUNKS = 50;
 
 function downsample(pcmBuffer, fromRate, toRate) {
   const ratio = fromRate / toRate;
