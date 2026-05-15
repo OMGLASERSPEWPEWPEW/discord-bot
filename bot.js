@@ -409,8 +409,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         messages: [{ role: 'user', content: `DarkLight just joined the "${channel.name}" voice channel.` }]
       });
       const text = greeting.content[0].text;
-      await channel.send(text);
-      recordUsage(greeting.usage.input_tokens, greeting.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      const voiceCost = recordUsage(greeting.usage.input_tokens, greeting.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      const totalTokens = greeting.usage.input_tokens + greeting.usage.output_tokens;
+      await channel.send(text + `\n-# ${formatCost(voiceCost.cost)} | ${totalTokens.toLocaleString()} tokens`);
       logActivity('voice-join', { user: 'DarkLight', channel: channel.name });
       console.log(`[voice] Greeted DarkLight in #${channel.name}`);
 
@@ -455,8 +456,9 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         system: 'You are Glyffi, a friendly Discord bot. Generate a short farewell (1 sentence) for DarkLight who just left a voice channel. Be warm and brief. One emoji.',
         messages: [{ role: 'user', content: `DarkLight just left the "${channel.name}" voice channel.` }]
       });
-      await channel.send(farewell.content[0].text);
-      recordUsage(farewell.usage.input_tokens, farewell.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      const farewellCost = recordUsage(farewell.usage.input_tokens, farewell.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      const farewellTokens = farewell.usage.input_tokens + farewell.usage.output_tokens;
+      await channel.send(farewell.content[0].text + `\n-# ${formatCost(farewellCost.cost)} | ${farewellTokens.toLocaleString()} tokens`);
       logActivity('voice-leave', { user: 'DarkLight', channel: channel.name });
       console.log(`[voice] Said bye to DarkLight in #${channel.name}`);
     } catch (err) {
