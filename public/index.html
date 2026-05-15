@@ -17,8 +17,8 @@
     --border: #2a2a3a;
     --border-glow: #3a3a5a;
     --text: #e2e2ef;
-    --text-dim: #8888a8;
-    --text-muted: #55556a;
+    --text-dim: #9999b8;
+    --text-muted: #7777a0;
     --accent: #6c63ff;
     --accent-glow: #8b83ff;
     --green: #3ddc84;
@@ -255,6 +255,12 @@
     border: 1px solid var(--border);
     border-radius: 12px;
     overflow: hidden;
+    container-type: inline-size;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ambient, .pulse-bar { display: none; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 
   .panel__head {
@@ -573,7 +579,7 @@
   </div>
 
   <!-- STATS -->
-  <div class="stats">
+  <div class="stats" role="region" aria-label="Bot statistics" aria-live="polite">
     <div class="stat">
       <div class="stat__label">Uptime</div>
       <div class="stat__value stat__value--green" id="stat-uptime">—</div>
@@ -622,7 +628,7 @@
         </div>
         <span class="panel__badge" id="activity-count">0 events</span>
       </div>
-      <div class="panel__body" id="activity-feed">
+      <div class="panel__body" id="activity-feed" aria-live="polite">
         <div class="empty"><div class="empty__icon">&#8943;</div>No activity yet</div>
       </div>
     </div>
@@ -640,7 +646,7 @@
         </div>
         <span class="panel__badge" id="voice-state-badge">idle</span>
       </div>
-      <div id="voice-card-wrap">
+      <div id="voice-card-wrap" aria-live="assertive">
         <div class="voice-card">
           <div class="voice-card__indicator voice-card__indicator--idle" id="voice-indicator">&#9835;</div>
           <div class="voice-card__info">
@@ -653,7 +659,7 @@
         <div class="panel__title" style="font-size:0.75rem">Recent Transcripts</div>
         <span class="panel__badge" id="transcript-count">0</span>
       </div>
-      <div class="panel__body" id="transcript-feed" style="max-height:220px">
+      <div class="panel__body" id="transcript-feed" style="max-height:220px" aria-live="polite">
         <div class="empty"><div class="empty__icon">&#8943;</div>No voice transcripts yet</div>
       </div>
     </div>
