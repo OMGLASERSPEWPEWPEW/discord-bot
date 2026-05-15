@@ -1,4 +1,4 @@
-const { OpusDecoder } = require('prism-media').opus;
+const { Decoder: OpusDecoder } = require('prism-media').opus;
 const { writeFileSync, unlinkSync, mkdirSync } = require('fs');
 const { join } = require('path');
 const whisper = require('whisper-node');
