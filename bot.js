@@ -235,8 +235,85 @@ const SYSTEM_PROMPT = `You are Glyffi, a helpful assistant in a Discord server. 
 
 You have tools to browse local codebases in ~/Development. When someone asks about code, use the tools to look things up rather than guessing. Start with list_projects to see what's available, then explore with list_files and read_file. Use search_code to find specific patterns.`;
 
+const VOICE_SYSTEM_PROMPT = `You are Glyffi, speaking in a voice channel. Keep responses to 1-3 sentences — concise and conversational, as if talking to a friend. No markdown, no formatting, no emojis.
+
+You have tools to browse local codebases in ~/Development. When someone asks about code or projects, use the tools to look things up rather than guessing. Start with list_projects to see what's available, then explore with list_files and read_file. Use search_code to find specific patterns.`;
+
 const TOOL_WINDOW = 12;
 const MAX_COST_PER_QUERY = 0.50;
+
+async function queryWithTools(query, systemPrompt, maxTokens, logPrefix) {
+  const messages = [{ role: 'user', content: query }];
+  const apiParams = {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages,
+  };
+  if (mcpTools.length > 0) apiParams.tools = mcpTools;
+
+  let response = await anthropic.messages.create(apiParams);
+  let rounds = 0;
+  let totalInput = response.usage.input_tokens;
+  let totalOutput = response.usage.output_tokens;
+  console.log(`[${logPrefix}] round 0 | stop=${response.stop_reason} | ${response.usage.input_tokens}in/${response.usage.output_tokens}out`);
+
+  while (response.stop_reason === 'tool_use') {
+    rounds++;
+    const runningCost = totalInput * PRICE_INPUT + totalOutput * PRICE_OUTPUT;
+    if (runningCost >= MAX_COST_PER_QUERY) {
+      console.log(`[${logPrefix}] cost cap hit (${formatCost(runningCost)})`);
+      break;
+    }
+
+    const toolUseBlocks = response.content.filter(b => b.type === 'tool_use');
+    console.log(`[${logPrefix}] round ${rounds} | tools: ${toolUseBlocks.map(b => b.name).join(', ')}`);
+
+    const toolResults = [];
+    for (const block of toolUseBlocks) {
+      try {
+        const result = await mcpClient.callTool({ name: block.name, arguments: block.input });
+        const text = result.content.map(c => c.text || '').join('\n');
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: text });
+        console.log(`[${logPrefix}]   ${block.name}(${JSON.stringify(block.input).slice(0, 80)}) -> ${text.length} chars`);
+      } catch (err) {
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: `Error: ${err.message}`, is_error: true });
+      }
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: toolResults });
+
+    if (rounds > TOOL_WINDOW) {
+      messages.splice(1, 2);
+      console.log(`[${logPrefix}] evicted oldest tool round`);
+    }
+
+    response = await anthropic.messages.create({ ...apiParams, messages });
+    totalInput += response.usage.input_tokens;
+    totalOutput += response.usage.output_tokens;
+    console.log(`[${logPrefix}] round ${rounds} done | stop=${response.stop_reason}`);
+  }
+
+  if (response.stop_reason === 'tool_use') {
+    messages.push({ role: 'assistant', content: response.content });
+    const forceResults = response.content.filter(b => b.type === 'tool_use').map(b => ({
+      type: 'tool_result', tool_use_id: b.id,
+      content: 'Wrap up now. Summarize what you found and respond to the user.',
+      is_error: true,
+    }));
+    messages.push({ role: 'user', content: forceResults });
+    const finalParams = { ...apiParams, messages };
+    delete finalParams.tools;
+    response = await anthropic.messages.create(finalParams);
+    totalInput += response.usage.input_tokens;
+    totalOutput += response.usage.output_tokens;
+  }
+
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+  console.log(`[${logPrefix}] done | ${rounds} rounds | ${totalInput + totalOutput} tokens | reply: ${text.length} chars`);
+  return { text, totalInput, totalOutput, rounds };
+}
 
 client.on('messageCreate', async message => {
   const tag = message.author.bot ? ' [BOT]' : '';
@@ -443,18 +520,13 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 const thinkingMsg = await channel.send(`-# 💭 Thinking about: "${query.slice(0, 80)}"`).catch(() => null);
 
                 try {
-                  const voiceResp = await anthropic.messages.create({
-                    model: 'claude-haiku-4-5-20251001',
-                    max_tokens: 200,
-                    system: 'You are Glyffi, speaking in a voice channel. Keep responses to 1-3 sentences — concise and conversational, as if talking to a friend. No markdown, no formatting, no emojis.',
-                    messages: [{ role: 'user', content: query }]
-                  });
+                  const voiceResp = await queryWithTools(query, VOICE_SYSTEM_PROMPT, 300, 'voice-query');
                   if (thinkingMsg) await thinkingMsg.delete().catch(() => {});
-                  const reply = voiceResp.content[0].text;
-                  const vcost = recordUsage(voiceResp.usage.input_tokens, voiceResp.usage.output_tokens, 'Glyffi-Voice', channel.id);
-                  const vtokens = voiceResp.usage.input_tokens + voiceResp.usage.output_tokens;
-                  await channel.send(reply + `\n-# ${formatCost(vcost.cost)} | ${vtokens.toLocaleString()} tokens`);
-                  logActivity('voice-reply', { user: 'DarkLight', channel: channel.name, query: query.slice(0, 80) });
+                  const reply = voiceResp.text || "I looked into it but couldn't form a clear answer.";
+                  const vcost = recordUsage(voiceResp.totalInput, voiceResp.totalOutput, 'Glyffi-Voice', channel.id);
+                  const vtokens = voiceResp.totalInput + voiceResp.totalOutput;
+                  await channel.send(reply + `\n-# ${formatCost(vcost.cost)} | ${vtokens.toLocaleString()} tokens | ${voiceResp.rounds} tool rounds`);
+                  logActivity('voice-reply', { user: 'DarkLight', channel: channel.name, query: query.slice(0, 80), rounds: voiceResp.rounds });
 
                   const cleanReply = reply.replace(/[^\w\s.,!?'-]/g, '').slice(0, 200);
                   const replyUrl = googleTTS.getAudioUrl(cleanReply, { lang: 'en', slow: false });
