@@ -524,7 +524,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       const text = greeting.content[0].text;
       const voiceCost = recordUsage(greeting.usage.input_tokens, greeting.usage.output_tokens, 'Glyffi-Voice', channel.id);
       const totalTokens = greeting.usage.input_tokens + greeting.usage.output_tokens;
-      await channel.send(text + `\n-# ${formatCost(voiceCost.cost)} | ${totalTokens.toLocaleString()} tokens`);
+      await channel.send(text + `\n-# ${formatCost(voiceCost.cost)} | ${totalTokens.toLocaleString()} tokens\n-# 📊 Dashboard: http://localhost:${PORT}`);
       logActivity('voice-join', { user: 'DarkLight', channel: channel.name });
       console.log(`[voice] Greeted DarkLight in #${channel.name}`);
 
@@ -618,7 +618,7 @@ client.login(process.env.DISCORD_TOKEN);
 
 // Set up an Express server to handle Git webhook POST requests.
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3737;
 
 // Use JSON body parser middleware.
 app.use(bodyParser.json());
