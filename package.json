@@ -1,6 +1,6 @@
 {
   "name": "discord-bot",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "index.js",
   "scripts": {
     "start": "node bot.js",
@@ -19,6 +19,7 @@
     "body-parser": "^1.20.3",
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "pg": "^8.20.0"
   }
 }

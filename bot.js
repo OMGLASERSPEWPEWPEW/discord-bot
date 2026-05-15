@@ -23,6 +23,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
+const { ingestAllChannels, logMessage, getStats } = require('./src/services/db-service');
 const { checkForNewCommits, fetchCommitDetails } = require('./src/services/github-service');
 
 const fs = require('fs');
@@ -149,6 +150,15 @@ client.once('ready', () => {
   });
   startGitHubMonitoring();
   initMcpClient();
+
+  console.log('[db] Starting channel ingestion...');
+  ingestAllChannels(client).then(results => {
+    const totalNew = results.reduce((sum, r) => sum + (r.ingested || 0), 0);
+    console.log(`[db] Ingestion complete: ${totalNew} new messages across ${results.length} channels`);
+    logActivity('ingest', { channels: results.length, messages: totalNew });
+  }).catch(err => {
+    console.error('[db] Ingestion failed:', err.message);
+  });
 });
 
 async function initMcpClient() {
@@ -188,6 +198,7 @@ client.on('messageCreate', async message => {
   const tag = message.author.bot ? ' [BOT]' : '';
   const preview = message.content.slice(0, 120) || (message.embeds.length ? `[${message.embeds.length} embed(s)]` : '[no content]');
   console.log(`[msg] #${message.channel.name} | ${message.author.displayName}${tag}: ${preview}`);
+  logMessage(message);
 
   if (message.author.bot) return;
   if (!message.mentions.has(client.user)) return;
@@ -491,6 +502,15 @@ app.get('/api/channel/:id/messages', async (req, res) => {
       timestamp: m.createdAt.toISOString()
     }));
     res.json(result.reverse());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/db/stats', async (req, res) => {
+  try {
+    const stats = await getStats();
+    res.json(stats);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
