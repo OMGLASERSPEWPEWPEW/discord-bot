@@ -374,6 +374,55 @@ client.on('messageCreate', async message => {
   }
 });
 
+const DARKLIGHT_ID = '85856344308973568';
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  if (newState.member.id !== DARKLIGHT_ID) return;
+
+  const joined = !oldState.channelId && newState.channelId;
+  const left = oldState.channelId && !newState.channelId;
+  const switched = oldState.channelId && newState.channelId
+                   && oldState.channelId !== newState.channelId;
+
+  if (joined || switched) {
+    const channel = newState.channel;
+    try {
+      const greeting = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 150,
+        system: 'You are Glyffi, a friendly Discord bot. Generate a short, unique greeting (1-2 sentences) for DarkLight who just joined a voice channel. Be warm, playful, and vary your style. Use an emoji or two.',
+        messages: [{ role: 'user', content: `DarkLight just joined the "${channel.name}" voice channel.` }]
+      });
+      const text = greeting.content[0].text;
+      await channel.send(text);
+      recordUsage(greeting.usage.input_tokens, greeting.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      logActivity('voice-join', { user: 'DarkLight', channel: channel.name });
+      console.log(`[voice] Greeted DarkLight in #${channel.name}`);
+    } catch (err) {
+      console.error('[voice] greeting failed:', err.message);
+      await channel.send('Hey DarkLight! 👋').catch(() => {});
+    }
+  }
+
+  if (left) {
+    const channel = oldState.channel;
+    try {
+      const farewell = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 100,
+        system: 'You are Glyffi, a friendly Discord bot. Generate a short farewell (1 sentence) for DarkLight who just left a voice channel. Be warm and brief. One emoji.',
+        messages: [{ role: 'user', content: `DarkLight just left the "${channel.name}" voice channel.` }]
+      });
+      await channel.send(farewell.content[0].text);
+      recordUsage(farewell.usage.input_tokens, farewell.usage.output_tokens, 'Glyffi-Voice', channel.id);
+      logActivity('voice-leave', { user: 'DarkLight', channel: channel.name });
+      console.log(`[voice] Said bye to DarkLight in #${channel.name}`);
+    } catch (err) {
+      await channel.send('Later, DarkLight ✌️').catch(() => {});
+    }
+  }
+});
+
 // Log in to Discord using the token from the environment variable.
 client.login(process.env.DISCORD_TOKEN);
 
