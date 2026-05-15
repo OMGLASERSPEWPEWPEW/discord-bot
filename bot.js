@@ -153,6 +153,24 @@ client.once('ready', () => {
   startGitHubMonitoring();
   initMcpClient();
 
+  const glyffiChannel = client.channels.cache.get('1504906264742985779');
+  if (glyffiChannel) {
+    const pins = await glyffiChannel.messages.fetchPinned();
+    const hasIntroPin = pins.some(m => m.author.id === client.user.id && m.embeds.some(e => e.title === 'Welcome to #glyffi'));
+    if (!hasIntroPin) {
+      const introMsg = await glyffiChannel.send({
+        embeds: [{
+          color: 0x5865F2,
+          title: 'Welcome to #glyffi',
+          description: `Hey, I'm **Glyffi** — Harbor Moon's AI assistant.\n\n**What I do:**\n• Answer questions when you @mention me in any channel\n• Browse codebases in ~/Development with my built-in tools\n• Post ELI5 summaries here when my code gets updated\n• Log all server messages to PostgreSQL for long-term memory\n• Log DMs too — you can message me directly\n\n**Dashboard:**\nhttp://localhost:3000\nLive status, usage stats, activity feed, and DB stats.\n\n**Powered by** Claude Haiku 4.5 • PostgreSQL • MCP`,
+          footer: { text: `Glyffi v${BOT_VERSION}` }
+        }]
+      });
+      await introMsg.pin();
+      console.log('[glyffi] Pinned intro message in #glyffi');
+    }
+  }
+
   console.log('[db] Starting channel ingestion...');
   ingestAllChannels(client).then(async results => {
     const totalNew = results.reduce((sum, r) => sum + (r.ingested || 0), 0);
