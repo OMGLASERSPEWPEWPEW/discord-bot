@@ -23,6 +23,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { Client: McpClient } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { startListening } = require('./src/services/voice-listener');
 const googleTTS = require('google-tts-api');
 const { createCommitEmbed, createSimpleCommitMessage } = require('./src/formatters/commit-formatter');
 const { ingestAllChannels, logMessage, getStats } = require('./src/services/db-service');
@@ -377,6 +378,7 @@ client.on('messageCreate', async message => {
 });
 
 const DARKLIGHT_ID = '85856344308973568';
+let activeListener = null;
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   if (newState.member.id !== DARKLIGHT_ID) return;
@@ -426,6 +428,42 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
           console.log(`[voice] Playing TTS greeting in ${channel.name}`);
           player.on(AudioPlayerStatus.Idle, () => {
             console.log(`[voice] TTS playback finished`);
+            if (activeListener) activeListener.resume();
+            else {
+              activeListener = startListening(connection, DARKLIGHT_ID, async (transcript) => {
+                if (!transcript.toLowerCase().includes('glyffi')) {
+                  console.log(`[stt] No keyword, ignoring: "${transcript.slice(0, 80)}"`);
+                  return;
+                }
+                const query = transcript.replace(/glyffi/gi, '').trim();
+                if (!query) return;
+                console.log(`[voice] Processing query: "${query}"`);
+                activeListener.pause();
+
+                try {
+                  const voiceResp = await anthropic.messages.create({
+                    model: 'claude-haiku-4-5-20251001',
+                    max_tokens: 200,
+                    system: 'You are Glyffi, speaking in a voice channel. Keep responses to 1-3 sentences — concise and conversational, as if talking to a friend. No markdown, no formatting, no emojis.',
+                    messages: [{ role: 'user', content: query }]
+                  });
+                  const reply = voiceResp.content[0].text;
+                  const vcost = recordUsage(voiceResp.usage.input_tokens, voiceResp.usage.output_tokens, 'Glyffi-Voice', channel.id);
+                  const vtokens = voiceResp.usage.input_tokens + voiceResp.usage.output_tokens;
+                  await channel.send(reply + `\n-# ${formatCost(vcost.cost)} | ${vtokens.toLocaleString()} tokens`);
+                  logActivity('voice-reply', { user: 'DarkLight', channel: channel.name, query: query.slice(0, 80) });
+
+                  const cleanReply = reply.replace(/[^\w\s.,!?'-]/g, '').slice(0, 200);
+                  const replyUrl = googleTTS.getAudioUrl(cleanReply, { lang: 'en', slow: false });
+                  const replyResource = createAudioResource(replyUrl);
+                  player.play(replyResource);
+                  console.log(`[voice] Playing response TTS`);
+                } catch (err) {
+                  console.error('[voice] Voice response failed:', err.message);
+                  activeListener.resume();
+                }
+              });
+            }
           });
           player.on('error', err => {
             console.error('[voice] TTS playback error:', err.message);
@@ -442,6 +480,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
   if (left) {
     const channel = oldState.channel;
+    if (activeListener) { activeListener.stop(); activeListener = null; }
     try {
       const connection = getVoiceConnection(oldState.guild.id);
       if (connection) connection.destroy();

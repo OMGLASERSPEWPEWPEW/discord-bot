@@ -27,6 +27,9 @@ coverage/
 # Logs
 logs/
 
+# Voice temp files
+data/tmp/
+
 # OS/Editor junk
 .DS_Store
 Thumbs.db
