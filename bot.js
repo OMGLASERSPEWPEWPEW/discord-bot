@@ -152,10 +152,31 @@ client.once('ready', () => {
   initMcpClient();
 
   console.log('[db] Starting channel ingestion...');
-  ingestAllChannels(client).then(results => {
+  ingestAllChannels(client).then(async results => {
     const totalNew = results.reduce((sum, r) => sum + (r.ingested || 0), 0);
+    const totalStored = results.reduce((sum, r) => sum + (r.ingested || 0), 0);
     console.log(`[db] Ingestion complete: ${totalNew} new messages across ${results.length} channels`);
     logActivity('ingest', { channels: results.length, messages: totalNew });
+
+    if (totalNew > 0) {
+      const glyffiChannel = client.channels.cache.get('1504906264742985779');
+      if (glyffiChannel) {
+        const tableList = results
+          .filter(r => r.ingested > 0)
+          .map(r => `**#${r.channel}** → \`${r.table}\` (${r.ingested} messages)`)
+          .join('\n');
+
+        await glyffiChannel.send({
+          embeds: [{
+            color: 0x5865F2,
+            title: '📋 Glyffi Chat Log Update',
+            description: `Hey! I just synced **${totalNew}** new messages from **${results.length}** channels into my PostgreSQL database.\n\nEvery message in this server is logged so I can remember conversations and provide better context. Each channel has its own table:\n\n${tableList}\n\nNew messages are logged in real-time as they happen. Ask me anything about past conversations!`,
+            footer: { text: `Glyffi v${BOT_VERSION} • Postgres-backed memory` }
+          }]
+        });
+        console.log('[glyffi] Posted ingestion summary to #glyffi');
+      }
+    }
   }).catch(err => {
     console.error('[db] Ingestion failed:', err.message);
   });

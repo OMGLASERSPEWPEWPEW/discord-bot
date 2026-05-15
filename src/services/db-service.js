@@ -65,22 +65,37 @@ async function ingestChannel(channel) {
   const latestId = await getLatestMessageId(table);
 
   let total = 0;
-  let options = { limit: 100 };
-  if (latestId) options.after = latestId;
 
-  let batch;
-  do {
-    batch = await channel.messages.fetch(options);
-    if (batch.size === 0) break;
+  if (latestId) {
+    let options = { limit: 100, after: latestId };
+    let batch;
+    do {
+      batch = await channel.messages.fetch(options);
+      if (batch.size === 0) break;
+      const sorted = [...batch.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+      for (const msg of sorted) {
+        await insertMessage(table, msg);
+        total++;
+      }
+      options.after = sorted[sorted.length - 1].id;
+    } while (batch.size === 100);
+  } else {
+    let options = { limit: 100 };
+    let allMessages = [];
+    let batch;
+    do {
+      batch = await channel.messages.fetch(options);
+      if (batch.size === 0) break;
+      allMessages.push(...batch.values());
+      options.before = batch.last().id;
+    } while (batch.size === 100);
 
-    const sorted = [...batch.values()].sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-    for (const msg of sorted) {
+    allMessages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+    for (const msg of allMessages) {
       await insertMessage(table, msg);
       total++;
     }
-
-    options.after = sorted[sorted.length - 1].id;
-  } while (batch.size === 100);
+  }
 
   return { table, ingested: total };
 }
