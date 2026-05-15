@@ -1,7 +1,7 @@
 const { Decoder: OpusDecoder } = require('prism-media').opus;
 const { writeFileSync, unlinkSync, mkdirSync } = require('fs');
 const { join } = require('path');
-const { whisper } = require('whisper-node');
+const { execFileSync } = require('child_process');
 
 const TMP_DIR = join(__dirname, '../../data/tmp');
 mkdirSync(TMP_DIR, { recursive: true });
@@ -51,18 +51,23 @@ function writeWav(pcmBuffer, filePath) {
   writeFileSync(filePath, Buffer.concat([header, resampled]));
 }
 
+const WHISPER_BIN = '/opt/homebrew/opt/whisper-cpp/bin/whisper-cli';
 const MODEL_PATH = join(__dirname, '../../node_modules/whisper-node/dist/whisper/models/ggml-base.en.bin');
 
-async function transcribeFile(filePath) {
+function transcribeFile(filePath) {
   try {
-    const result = await whisper(filePath, {
-      modelPath: MODEL_PATH,
-      whisperOptions: { language: 'en', word_timestamps: false }
-    });
-    if (!result || result.length === 0) return null;
-    return result.map(r => r.speech).join(' ').trim();
+    const output = execFileSync(WHISPER_BIN, [
+      '-m', MODEL_PATH,
+      '-f', filePath,
+      '-l', 'en',
+      '--no-timestamps',
+      '--no-prints',
+    ], { encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
+    const text = output.replace(/\[.*?\]/g, '').trim();
+    if (!text || text === '(null)' || text.length < 2) return null;
+    return text;
   } catch (err) {
-    console.error('[stt] Whisper transcription error:', err.message);
+    console.error('[stt] Whisper CLI error:', err.message?.slice(0, 200));
     return null;
   }
 }
