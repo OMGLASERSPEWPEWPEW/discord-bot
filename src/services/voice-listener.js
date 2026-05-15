@@ -1,7 +1,7 @@
 const { Decoder: OpusDecoder } = require('prism-media').opus;
 const { writeFileSync, unlinkSync, mkdirSync } = require('fs');
 const { join } = require('path');
-const whisper = require('whisper-node');
+const { whisper } = require('whisper-node');
 
 const TMP_DIR = join(__dirname, '../../data/tmp');
 mkdirSync(TMP_DIR, { recursive: true });
