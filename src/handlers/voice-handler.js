@@ -1,37 +1,41 @@
 const { joinVoiceChannel, getVoiceConnection, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
-const googleTTS = require('google-tts-api');
+const { execFile } = require('child_process');
+const { join } = require('path');
+const { unlinkSync } = require('fs');
 const { startListening } = require('../services/voice-listener');
 const { DARKLIGHT_ID, GLYFFI_PATTERN, VOICE_SYSTEM_PROMPT, PORT } = require('../config');
 const { anthropic, recordUsage, formatCost, logActivity, logTranscript, setVoiceStatus, queryWithTools } = require('../shared');
+
+const PIPER_BIN = '/Library/Frameworks/Python.framework/Versions/3.11/bin/piper';
+const PIPER_MODEL = join(__dirname, '../../models/en_US-lessac-medium.onnx');
+const TMP_DIR = join(__dirname, '../../data/tmp');
 
 let activeListener = null;
 let voiceHistory = [];
 
 function playTTS(player, text) {
-  const cleanText = text.replace(/[^\w\s.,!?'-]/g, '');
-  const urls = googleTTS.getAllAudioUrls(cleanText, { lang: 'en', slow: false });
-  let index = 0;
+  const cleanText = text.replace(/[^\w\s.,!?'-]/g, '').trim();
+  if (!cleanText) return Promise.resolve();
 
-  function playNext() {
-    if (index >= urls.length) return;
-    const resource = createAudioResource(urls[index].url);
-    player.play(resource);
-    index++;
-  }
+  const wavPath = join(TMP_DIR, `tts_${Date.now()}.wav`);
 
-  player.removeAllListeners(AudioPlayerStatus.Idle);
-  player.on(AudioPlayerStatus.Idle, playNext);
-  playNext();
-
-  return new Promise(resolve => {
-    const origListener = () => {
-      if (index >= urls.length) {
-        player.removeListener(AudioPlayerStatus.Idle, origListener);
-        resolve();
+  return new Promise((resolve, reject) => {
+    const proc = execFile(PIPER_BIN, ['-m', PIPER_MODEL, '--output_file', wavPath], { timeout: 15000 }, (err) => {
+      if (err) {
+        console.error('[tts] Piper error:', err.message);
+        try { unlinkSync(wavPath); } catch {}
+        return reject(err);
       }
-    };
-    player.on(AudioPlayerStatus.Idle, origListener);
-    if (urls.length === 0) resolve();
+      const resource = createAudioResource(wavPath);
+      player.removeAllListeners(AudioPlayerStatus.Idle);
+      player.once(AudioPlayerStatus.Idle, () => {
+        try { unlinkSync(wavPath); } catch {}
+        resolve();
+      });
+      player.play(resource);
+    });
+    proc.stdin.write(cleanText);
+    proc.stdin.end();
   });
 }
 

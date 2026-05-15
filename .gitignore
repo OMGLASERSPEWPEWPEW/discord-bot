@@ -30,6 +30,9 @@ logs/
 # Voice temp files
 data/tmp/
 
+# TTS/STT models
+models/
+
 # OS/Editor junk
 .DS_Store
 Thumbs.db
