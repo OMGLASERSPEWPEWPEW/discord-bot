@@ -131,7 +131,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.DirectMessages,
   ],
+  partials: [require('discord.js').Partials.Channel],
 });
 
 // Log when the bot is ready.
@@ -217,8 +219,10 @@ const MAX_COST_PER_QUERY = 0.50;
 
 client.on('messageCreate', async message => {
   const tag = message.author.bot ? ' [BOT]' : '';
+  const isDM = message.channel.type === 1;
+  const chanLabel = isDM ? `DM:${message.author.username}` : `#${message.channel.name}`;
   const preview = message.content.slice(0, 120) || (message.embeds.length ? `[${message.embeds.length} embed(s)]` : '[no content]');
-  console.log(`[msg] #${message.channel.name} | ${message.author.displayName}${tag}: ${preview}`);
+  console.log(`[msg] ${chanLabel} | ${message.author.displayName}${tag}: ${preview}`);
   logMessage(message);
 
   if (message.author.bot) return;

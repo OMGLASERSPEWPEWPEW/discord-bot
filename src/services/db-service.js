@@ -7,13 +7,14 @@ const pool = new Pool({
   user: process.env.PGUSER || process.env.USER,
 });
 
-function tableName(channelId, channelName) {
+function tableName(channelId, channelName, isDM) {
   const safe = channelName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  return `ch_${safe}_${channelId.slice(-6)}`;
+  const prefix = isDM ? 'dm' : 'ch';
+  return `${prefix}_${safe}_${channelId.slice(-6)}`;
 }
 
-async function ensureChannelTable(channelId, channelName) {
-  const table = tableName(channelId, channelName);
+async function ensureChannelTable(channelId, channelName, isDM = false) {
+  const table = tableName(channelId, channelName, isDM);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${table} (
       message_id TEXT PRIMARY KEY,
@@ -120,10 +121,13 @@ async function ingestAllChannels(client) {
 
 async function logMessage(msg) {
   try {
-    const table = await ensureChannelTable(msg.channel.id, msg.channel.name);
+    const isDM = msg.channel.type === 1;
+    const name = isDM ? msg.author.username : msg.channel.name;
+    const table = await ensureChannelTable(msg.channel.id, name, isDM);
     await insertMessage(table, msg);
   } catch (err) {
-    console.error(`[db] failed to log message in #${msg.channel.name}: ${err.message}`);
+    const label = msg.channel.type === 1 ? `DM:${msg.author.username}` : `#${msg.channel.name}`;
+    console.error(`[db] failed to log message in ${label}: ${err.message}`);
   }
 }
 
