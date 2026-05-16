@@ -1,5 +1,42 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/orchestrator-init.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/sota-sync.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/ghostty-session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/git-push-confirm.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/ghostty-pre-tool-use.sh"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -10,6 +47,62 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/promote-hook-detector.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/docs-review-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/test-review-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/test-runner.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/cost-tracker.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/context-window.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/context-stamp.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/task-summary-reminder.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/completion-notification.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-journal.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/journal-check.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stuck-detector.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/sync-todo.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/zephyr-init.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/ghostty-stop.sh"
           }
         ]
       }

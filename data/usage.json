@@ -1,22 +1,46 @@
 {
-  "totalInputTokens": 75802,
-  "totalOutputTokens": 3023,
-  "totalCost": 0.07273360000000001,
-  "queries": 1,
+  "totalInputTokens": 134670,
+  "totalOutputTokens": 10136,
+  "totalCost": 0.14827999999999994,
+  "queries": 89,
   "byUser": {
     "DarkLight": {
-      "inputTokens": 75802,
-      "outputTokens": 3023,
-      "cost": 0.07273360000000001,
-      "queries": 1
+      "inputTokens": 85772,
+      "outputTokens": 3523,
+      "cost": 0.08270960000000001,
+      "queries": 2
+    },
+    "Glyffi-ELI5": {
+      "inputTokens": 8064,
+      "outputTokens": 4075,
+      "cost": 0.022751200000000006,
+      "queries": 38
+    },
+    "Glyffi-Voice": {
+      "inputTokens": 40834,
+      "outputTokens": 2538,
+      "cost": 0.042819199999999995,
+      "queries": 49
     }
   },
   "byChannel": {
     "1491916053553352745": {
-      "inputTokens": 75802,
-      "outputTokens": 3023,
-      "cost": 0.07273360000000001,
-      "queries": 1
+      "inputTokens": 76612,
+      "outputTokens": 3355,
+      "cost": 0.0747096,
+      "queries": 4
+    },
+    "1504906264742985779": {
+      "inputTokens": 7254,
+      "outputTokens": 3743,
+      "cost": 0.0207752,
+      "queries": 35
+    },
+    "1247371844475162668": {
+      "inputTokens": 50804,
+      "outputTokens": 3038,
+      "cost": 0.05279520000000001,
+      "queries": 50
     }
   }
 }
